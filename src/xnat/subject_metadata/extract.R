@@ -4,13 +4,19 @@
 ##  extract relevant XNAT subject metadata from all XML files. pour into single
 ##  CSV with the following format:
 ##
-##  PATIENT_ID EXPERIMENT_ID NAME SATISFACTION #fMRI #T1 #T1_PU #DICOM #NIFTI
+##     PATIENT_ID EXPERIMENT_ID NAME SATISFACTION #fMRI #T1 #T1_PU #DICOM #NIFTI
+##
+##  afterwards, extract PATIENT_IDs and EXPERIMENT_IDs with full fMRI sessions
+##  for future use with ../images/xnat-download.sh
 
+if (! "xml2" %in% rownames(installed.packages())) {
+    install.packages("xml2")
+}
 library(xml2)
-library(tidyverse)
 
-DATA_DIR = './sujetos-experimentos'
-OUT <- './resultados.csv'
+DATA_DIR <- './data/xnat/subject_metadata/experiments'
+OUT <- './out/xnat/subject_metadata/subjects.csv'
+OUT2 <- './out/xnat/subject_metadata/fmri_subject_ids.csv'
 
 ## per-file/subject extraction. subject('path-to-file')
 subject <- function(xml) {
@@ -47,6 +53,7 @@ subject <- function(xml) {
 files <- list.files(DATA_DIR, full.names = TRUE)
 subjects <- lapply(files, subject)
 
+## output CSV
 header <- c("pid", "expid", "name","satisfaction","fmri","t1","t1_PU","dicom","nifti")
 write.table(as.matrix(t(header)),
             OUT,
@@ -68,3 +75,10 @@ for (i in 1:length(subjects)) {
 }
 
 dataframe <- read.csv(OUT)
+
+## subset of subject ids and experiment ids with full fMRI sessions
+write.table(dataframe[dataframe[, "fmri"] >= 3, c("pid", "expid")],
+            OUT2,
+            quote = FALSE,
+            col.names = FALSE,
+            row.names = FALSE)
