@@ -3,12 +3,13 @@
 # author: Isaac David <isacdaavid@at@isacdaavid@dot@info>
 # license: GPLv3 or later
 
-# download all scan types (DICOM format only) from XNAT for a
-# given list $FILE with "PATIENT_ID EXPERIMENT_ID" pairs, using the REST API.
-# one ${patient_id}.zip per patient.
+# download all scan types (DICOM format only) from XNAT for a given
+# PATIENT_ID EXPERIMENT_ID pair, using the REST API. one ${patient_id}.zip
+# per patient, save at third argument.
 
-readonly FILE='xnat-ids.csv'
-readonly DELIMITER=' '
+readonly PID=$1
+readonly EXPID=$2
+readonly OUTDIR=$3
 readonly XNAT_HOST='http://172.24.80.68:8080'
 
 printf 'xnat username: '
@@ -16,14 +17,11 @@ read -r username
 printf 'xnat password: '
 read -rs password
 
-while read -pr line; do
-    pid=$(cut -d "$DELIMITER" -f 1 <<<"$line")
-    expid=$(cut -d "$DELIMITER" -f 2 <<<"$line")
-    url="${XNAT_HOST}/REST/archive/experiments/${expid}/scans/ALL/resources/DICOM/files?format=zip"
 
-    wget -O "$pid".zip \
+readonly URL="${XNAT_HOST}/REST/archive/experiments/${EXPID}/scans/ALL/resources/DICOM/files?format=zip"
+
+wget -O "${OUTDIR}/${PID}".zip \
          "--http-user=${username}" \
          "--http-password=${password}" \
          --auth-no-challenge \
-         "$url" || exit 0 # abort on error
-done < "$FILE"
+         "$URL" || exit 0 # abort on error
