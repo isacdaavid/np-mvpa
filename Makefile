@@ -13,7 +13,7 @@ build: images
 .PHONY: images
 images: $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
 	@mkdir -p "$(DATA_DIR)/xnat/$@"
-	targets=($$(awk '{print $$1 ".zip"}' "$<" | sort)) ; \
+	@targets=($$(awk '{print $$1 ".zip"}' "$<" | sort)) ; \
 	for i in $${targets[@]}; do \
 	    if [[ ! -f "$(DATA_DIR)/xnat/$@/$$i" ]]; then \
 	        $(SRC_DIR)/xnat/$@/xnat-download.sh $$(grep "^$${i%.zip} " $<) \
