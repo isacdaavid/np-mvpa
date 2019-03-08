@@ -6,8 +6,8 @@
 ##
 ##     PATIENT_ID EXPERIMENT_ID NAME SATISFACTION #fMRI #T1 #T1_PU #DICOM #NIFTI
 ##
-##  afterwards, extract PATIENT_IDs and EXPERIMENT_IDs with full fMRI sessions
-##  for future use with ../images/xnat-download.sh
+##  afterwards, extract PATIENT_IDs and EXPERIMENT_IDs with nonempty fMRI
+##  sessions and eprime data for future use with ../images/xnat-download.sh
 
 if (! "xml2" %in% rownames(installed.packages())) {
     install.packages("xml2")
@@ -77,7 +77,8 @@ for (i in 1:length(subjects)) {
 dataframe <- read.csv(OUT)
 
 ## subset of subject ids and experiment ids with full fMRI sessions
-write.table(dataframe[dataframe[, "fmri"] >= 3, c("pid", "expid")],
+write.table(dataframe[dataframe[, "fmri"] >= 1 & dataframe[dataframe[, "E.prime"] >= 1,
+                      c("pid", "expid")],
             OUT2,
             quote = FALSE,
             col.names = FALSE,
