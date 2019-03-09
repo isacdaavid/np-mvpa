@@ -77,7 +77,7 @@ for (i in 1:length(subjects)) {
 dataframe <- read.csv(OUT)
 
 ## subset of subject ids and experiment ids with full fMRI sessions
-write.table(dataframe[dataframe[, "fmri"] >= 1 & dataframe[dataframe[, "E.prime"] >= 1,
+write.table(dataframe[dataframe[, "fmri"] >= 1 & dataframe[, "E.prime"] >= 1,
                       c("pid", "expid")],
             OUT2,
             quote = FALSE,
