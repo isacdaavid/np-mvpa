@@ -10,8 +10,12 @@ DATA_DIR := data
 all: build
 build: images eprime
 
+$(BUILD_DIR)/eprime//%.csv: $(BUILD_DIR)/eprime/*/%.txt
+	awk -f "$(SRC_DIR)/eprime/eprime-to-csv.awk" -- $< > $@
+
 .PHONY: eprime
 eprime: $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
+	rm -r "$(BUILD_DIR)/$@" # FIXME
 # copy eprime event files into subject-specific directory structure
 	targets=($$(awk '{print $$1}' "$<")) ; \
 	for i in $${targets[@]}; do \
@@ -23,12 +27,20 @@ eprime: $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
 # manually fix duplicates and repeats
 	rm $(BUILD_DIR)/$@/526/*RTs* \
 	    $(BUILD_DIR)/$@/677/Gaze* \
-	    $(BUILD_DIR)/$@/678/{'Copia de Copia de Gaze Cueing_A Backup1 Backup1-678-1.txt','Gaze Cueing_B Backup1-678-1.txt','Copia de Gaze Cueing_C Backup1-678-1.txt'} \
+	    $(BUILD_DIR)/$@/678/{'Gaze Cueing_B Backup1-678-1.txt','Copia de Gaze Cueing_C Backup1-678-1.txt'} \
+	    $(BUILD_DIR)/$@/678/'Copia de Copia de Gaze Cueing_A Backup1 Backup1-678-1.txt' \
 	    "$(BUILD_DIR)/$@/682/Gaze Cueing_B Backup1 Backup1-682-1.txt"
 	mv $(BUILD_DIR)/$@/664/Copia\ de\ Gaze\ Cueing_{C,B}\ Backup1-664-1.txt
 # homogenize disparate file names into {A,B,C}.txt
-	find $(BUILD_DIR)/$@ -type f -exec bash -c \
+	find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \
 	    'mv "{}" $$(echo {} | sed -En "s/(.*)(\/)(.*)(_)(A|B|C)(.*)(.txt)/\1\2\5\7/p")' \;
+# UTF-16 -> UTF-8, CRLF -> LF
+	find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \
+	    'iconv -f UTF-16 -t UTF-8 "{}" | tr -d "\r" > "{}.new" && mv "{}.new" "{}"' \;
+# eprime event list -> pyMVPA sample attribute matrix
+	find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \
+	    'awk -f "$(SRC_DIR)/eprime/eprime-to-csv.awk" -- "{}" > "{}.csv"' \;
+
 
 .PHONY: images
 images: $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
