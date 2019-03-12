@@ -27,9 +27,9 @@ eprime: $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
 # manually fix duplicates and repeats
 	rm $(BUILD_DIR)/$@/526/*RTs* \
 	    $(BUILD_DIR)/$@/677/Gaze* \
+	    "$(BUILD_DIR)/$@/682/Gaze Cueing_B Backup1 Backup1-682-1.txt" \
 	    $(BUILD_DIR)/$@/678/{'Gaze Cueing_B Backup1-678-1.txt','Copia de Gaze Cueing_C Backup1-678-1.txt'} \
-	    $(BUILD_DIR)/$@/678/'Copia de Copia de Gaze Cueing_A Backup1 Backup1-678-1.txt' \
-	    "$(BUILD_DIR)/$@/682/Gaze Cueing_B Backup1 Backup1-682-1.txt"
+	    # $(BUILD_DIR)/$@/678/'Copia de Copia de Gaze Cueing_A Backup1 Backup1-678-1.txt'
 	mv $(BUILD_DIR)/$@/664/Copia\ de\ Gaze\ Cueing_{C,B}\ Backup1-664-1.txt
 # homogenize disparate file names into {A,B,C}.txt
 	find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \

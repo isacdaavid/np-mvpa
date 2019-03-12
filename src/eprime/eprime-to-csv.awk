@@ -47,8 +47,10 @@
 }
 
 /Target.RESP:/ {
-    resp = (($2 == "a" || $2 == "b") ? "left" : "right")
-    print button_time "\t" age "\t" sex "\t" hand "\t" "obj" "\t" "face" "\t" face_gender "\t" emotion "\t" gaze "\t" target "\t" resp
+    if (button_time != 0) { # don't assume a button was actually pressed
+        resp = (($2 == "a" || $2 == "b") ? "left" : "right")
+        print button_time "\t" age "\t" sex "\t" hand "\t" "obj" "\t" "face" "\t" face_gender "\t" emotion "\t" gaze "\t" target "\t" resp
+    }
 }
 
 /FinishTiral.OnsetTime:/ {
