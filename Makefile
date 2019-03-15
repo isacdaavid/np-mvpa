@@ -11,14 +11,14 @@ IDS_FILE := $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
 # memoization of IDS after $(IDS_FILE) is regenerated
 IDS = $(shell cut -d ' ' -f 1 $(IDS_FILE) | sort)
 DICOMS = $(shell find $(DATA_DIR)/xnat/images/ -type d -name DICOM -printf "%p\n" | \
-                 grep -E '(fMRI_GazeCueing|T1|FSPGR|T2)' | sort)
+                 grep -E '(fMRI_GazeCueing|FSPGR|T2)' | grep -v '00-PU' | sort)
 
 .PHONY: build all
 all: build
 build: eprime nifti
 
 .PHONY: nifti
-nifti: $(DICOMS:DICOM=nifti.nii.gz)
+nifti: images $(DICOMS:DICOM=nifti.nii.gz)
 
 %nifti.nii.gz: %DICOM
 	@echo 'building $@'
@@ -26,6 +26,7 @@ nifti: $(DICOMS:DICOM=nifti.nii.gz)
 
 .PHONY: eprime
 eprime: $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
+	@printf '\nbuilding design matrices from eprime event lists\n'
 	@rm -r "$(BUILD_DIR)/$@" # FIXME
 # copy eprime event files into subject-specific directory structure
 	@targets=($$(cut -d ' ' -f 1 "$<")) ; \
@@ -52,21 +53,24 @@ eprime: $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
 	@find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \
 	    'awk -f "$(SRC_DIR)/eprime/eprime-to-csv.awk" -- "{}" > "{}.csv"' \;
 
-.PHONY: dicoms
-dicoms: $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
+.PHONY: images
+images: $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
 	@mkdir -p "$(DATA_DIR)/xnat/$@"
 	@targets=($$(cut -d ' ' -f 1 "$<" | sort)) ; \
 	for i in $${targets[@]}; do \
 	    [[ -d "$(DATA_DIR)/xnat/$@/$$i" ]] && continue ; \
 	    if [[ ! -f "$(DATA_DIR)/xnat/$@/$${i}.zip" ]]; then \
+	        printf '\ndownloading DICOMS for subject %d\n' "$$i" ; \
 	        $(SRC_DIR)/xnat/$@/xnat-download.sh $$(grep "^$$i " $<) \
 	                                            "$(DATA_DIR)/xnat/$@" ; \
 	    fi ; \
+	    printf '\nunziping DICOMs for subject %d\n' "$$i" ; \
 	    unzip -q "$(DATA_DIR)/xnat/$@/$${i}.zip" \
 	          -d "$(DATA_DIR)/xnat/$@/" && rm "$(DATA_DIR)/xnat/$@/$${i}.zip" ; \
 	done ;
 
 $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv: $(SRC_DIR)/xnat/subject_metadata/extract.R
+	@printf '\nbuilding subject IDs list\n'
 	@mkdir -p "$(BUILD_DIR)/xnat/subject_metadata"
 	Rscript -e 'source("$(SRC_DIR)/xnat/subject_metadata/extract.R")'
 
