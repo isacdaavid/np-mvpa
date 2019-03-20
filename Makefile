@@ -10,7 +10,7 @@ IDS_FILE := $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
 # note the use of the lazy assignment operator (strict evaluation) to avoid
 # memoization of IDS after $(IDS_FILE) is regenerated
 IDS = $(shell cut -d ' ' -f 1 $(IDS_FILE) | sort)
-DICOMS = $(shell find $(DATA_DIR)/xnat/images/ -type d -name DICOM -printf "%p\n" | \
+DICOMS = $(shell find $(DATA_DIR)/xnat/images/ -type d -name DICOM | \
                  grep -E '(fMRI_GazeCueing|FSPGR|T2)' | grep -v '00-PU' | sort)
 
 .PHONY: build all
@@ -49,6 +49,10 @@ eprime: $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
 # UTF-16 -> UTF-8, CRLF -> LF
 	@find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \
 	    'iconv -f UTF-16 -t UTF-8 "{}" | tr -d "\r" > "{}.new" && mv "{}.new" "{}"' \;
+# more manual fixes (file contents)
+	@sed -i 's/Sex: male/Sex: female/' $(BUILD_DIR)/$@/559/C.txt
+	@sed -i 's/Age: 0/Age: 35/' $(BUILD_DIR)/$@/575/C.txt
+	@sed -i 's/Age: 22/Age: 23/' $(BUILD_DIR)/$@/590/{B,C}.txt
 # eprime event list -> pyMVPA sample attribute matrix
 	@find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \
 	    'awk -f "$(SRC_DIR)/eprime/eprime-to-csv.awk" -- "{}" > "{}.csv"' \;
@@ -68,6 +72,9 @@ images: $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
 	    unzip -q "$(DATA_DIR)/xnat/$@/$${i}.zip" \
 	          -d "$(DATA_DIR)/xnat/$@/" && rm "$(DATA_DIR)/xnat/$@/$${i}.zip" ; \
 	done ;
+# delete duplicate T1 directories. we'll do smoothing and normalisation manually
+	@find "$(DATA_DIR)/xnat/$@/" -type d -name '*00-PU*' -prune \
+	         -exec bash -c 'echo "deleting derived images" {} ; rm -r {}' \; ; \
 
 $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv: $(SRC_DIR)/xnat/subject_metadata/extract.R
 	@printf '\nbuilding subject IDs list\n'
