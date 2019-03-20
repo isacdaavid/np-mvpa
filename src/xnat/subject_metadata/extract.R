@@ -4,10 +4,10 @@
 ##  extract relevant XNAT subject metadata from all XML files. pour into single
 ##  CSV with the following format:
 ##
-##     PATIENT_ID EXPERIMENT_ID NAME SATISFACTION #fMRI #T1 #T1_PU #DICOM #NIFTI
+##     PATIENT_ID EXPERIMENT_ID NAME SATISFACTION #fMRI #T1 #T1_PU #DICOM
 ##
-##  afterwards, extract PATIENT_IDs and EXPERIMENT_IDs with nonempty fMRI
-##  sessions and eprime data for future use with ../images/xnat-download.sh
+##  afterwards, extract PATIENT_IDs and EXPERIMENT_IDs with nonempty T1 and fMRI
+##  sessions and eprime data, for future use with ../images/xnat-download.sh
 
 if (! "xml2" %in% rownames(installed.packages())) {
     install.packages("xml2")
@@ -35,18 +35,20 @@ subject <- function(xml) {
                                             '//xnat:field[@name="totalsatisfacción"]'))
     s$fmri <- length(xml_find_all(file,
                                   '//xnat:scan[@type="fMRI GazeCueing_1"]')) +
-        length(xml_find_all(file,
-                            '//xnat:scan[@type="fMRI GazeCueing_2"]')) +
-        length(xml_find_all(file,
-                            '//xnat:scan[@type="fMRI GazeCueing_3"]'))
+              length(xml_find_all(file,
+                                  '//xnat:scan[@type="fMRI GazeCueing_2"]')) +
+              length(xml_find_all(file,
+                                  '//xnat:scan[@type="fMRI GazeCueing_2rep"]')) +
+              length(xml_find_all(file,
+                                  '//xnat:scan[@type="fMRI GazeCueing_3"]'))
     s$t1 <- length(xml_find_all(file,
-                                '//xnat:scan[@type="Sag_T1_FSPGR_BRAVO"]'))
-    s$t1_pu <- length(xml_find_all(file,
-                                   '//xnat:scan[@type="PU:Sag_T1_FSPGR_BRAVO"]'))
+                                '//xnat:scan[@type="Sag_T1_FSPGR_BRAVO"]')) +
+            length(xml_find_all(file,
+                                '//xnat:scan[@type="PU:Sag_T1_FSPGR_BRAVO"]')) +
+            length(xml_find_all(file,
+                                '//xnat:scan[@type="Sag FSPGR BRAVO"]'))
     s$dicom <- length(xml_find_all(file,
                                    '//xnat:file[@label="DICOM"]'))
-    s$nifti <- length(xml_find_all(file,
-                                   '//xnat:file[@label="NIFTI"]'))
     return(s)
 }
 
@@ -54,7 +56,7 @@ files <- list.files(DATA_DIR, full.names = TRUE)
 subjects <- lapply(files, subject)
 
 ## output CSV
-header <- c("pid", "expid", "name","satisfaction","fmri","t1","t1_PU","dicom","nifti")
+header <- c("pid", "expid", "name","satisfaction","fmri","t1","dicom")
 write.table(as.matrix(t(header)),
             OUT,
             sep = ",",
@@ -76,10 +78,13 @@ for (i in 1:length(subjects)) {
 
 dataframe <- read.csv(OUT)
 
-## subset of subject ids and experiment ids with full fMRI sessions
-write.table(dataframe[dataframe[, "fmri"] >= 1 & dataframe[, "E.prime"] >= 1,
+## subset of subject ids + experiment ids with sufficient data
+write.table(dataframe[dataframe[, "fmri"] > 0 &
+                      dataframe[, "E.prime"] > 0 &
+                      dataframe[, "t1"] > 0,
                       c("pid", "expid")],
             OUT2,
             quote = FALSE,
             col.names = FALSE,
             row.names = FALSE)
+
