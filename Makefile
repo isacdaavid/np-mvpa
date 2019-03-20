@@ -53,6 +53,10 @@ eprime: $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
 	@sed -i 's/Sex: male/Sex: female/' $(BUILD_DIR)/$@/559/C.txt
 	@sed -i 's/Age: 0/Age: 35/' $(BUILD_DIR)/$@/575/C.txt
 	@sed -i 's/Age: 22/Age: 23/' $(BUILD_DIR)/$@/590/{B,C}.txt
+	@sed -i 's/Age: 0/Age: 31/' $(BUILD_DIR)/$@/672/{A,B}.txt
+	@sed -i 's/Sex: male/Sex: female/' $(BUILD_DIR)/$@/678/B.txt
+	@sed -i 's/Age: 23/Age: 22/' $(BUILD_DIR)/$@/678/C.txt
+	@sed -i 's/Age: 28/Age: 27/' $(BUILD_DIR)/$@/696/C.txt
 # eprime event list -> pyMVPA sample attribute matrix
 	@find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \
 	    'awk -f "$(SRC_DIR)/eprime/eprime-to-csv.awk" -- "{}" > "{}.csv"' \;
