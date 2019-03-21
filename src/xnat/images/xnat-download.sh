@@ -24,4 +24,4 @@ wget -O "${OUTDIR}/${PID}".zip \
          "--http-user=${username}" \
          "--http-password=${password}" \
          --auth-no-challenge \
-         "$URL" || exit 0 # abort on error
+         "$URL"
