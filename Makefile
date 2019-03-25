@@ -2,6 +2,7 @@
 # license: GPLv3 or later
 
 SHELL := /bin/bash
+
 BUILD_DIR := out
 SRC_DIR := src
 DATA_DIR := data
@@ -13,19 +14,33 @@ IDS = $(shell cut -d ' ' -f 1 $(IDS_FILE) | sort)
 DICOMS = $(shell find $(DATA_DIR)/xnat/images/ -type d -name DICOM | \
                  grep -E '(fMRI_GazeCueing|FSPGR|T2)' | grep -v '00-PU' | sort)
 VOLBRAIN_ZIPS = $(shell find $(DATA_DIR)/volbrain/ -type f -name '*.zip')
+VOLBRAIN_IMAGES = $(shell find data/volbrain/ -type f -name 'native_n_*')
 
 .PHONY : build all
 all : build
-build : eprime volbrain_tree volbrain_unzip
+build : eprime volbrain_tree volbrain_unzip t1w_brain_extraction
+
+################################################################################
+# volbrain-related rules
+################################################################################
+
+t1w_brain_extraction : $(VOLBRAIN_IMAGES:.nii=_brain.nii.gz)
+	@echo
+
+$(DATA_DIR)/volbrain/%_brain.nii.gz : $(DATA_DIR)/volbrain/%.nii
+	@echo 'extracting brain to $@'
+	@fslmaths $< -mul "$(subst _n_,_mask_n_,$<)" "$@"
 
 .PHONY : volbrain_unzip
 volbrain_unzip : $(VOLBRAIN_ZIPS:.zip=.volbrain)
 	@echo
 
+# FIXME: requires manual upload/download from https://volbrain.upv.es
 %.volbrain : %.zip
 	@echo 'unzip-ing $<'
 	@mkdir "$@" && unzip -q "$<" -d "$@" && rm "$<"
 
+# create directory tree where to put volbrain's results
 .PHONY : volbrain_tree
 volbrain_tree : nifti $(addsuffix /, $(addprefix $(DATA_DIR)/volbrain/, $(IDS)))
 	@echo
@@ -33,6 +48,10 @@ volbrain_tree : nifti $(addsuffix /, $(addprefix $(DATA_DIR)/volbrain/, $(IDS)))
 $(DATA_DIR)/volbrain/%/ :
 	@echo 'creating directory at $@'
 	@mkdir -p "$@"
+
+################################################################################
+# convert xnat DICOMs to Nifti
+################################################################################
 
 .PHONY : nifti
 nifti : images $(DICOMS:DICOM=nifti.nii.gz)
@@ -42,10 +61,40 @@ nifti : images $(DICOMS:DICOM=nifti.nii.gz)
 	@echo 'building $@'
 	@dcm2niix -f 'nifti' -g y -i y -t y -z y "$</.." > /dev/null
 
+################################################################################
+# xnat DICOMs: download, unzip. DO NOT PARALLELIZE (don't run with -j )
+################################################################################
+
+.PHONY : images
+images : $(IDS_FILE)
+	@mkdir -p "$(DATA_DIR)/xnat/$@"
+	@targets=($$(cut -d ' ' -f 1 "$<" | sort)) ; \
+	for i in $${targets[@]}; do \
+	    [[ -d "$(DATA_DIR)/xnat/$@/$$i" ]] && continue ; \
+	    if [[ ! -f "$(DATA_DIR)/xnat/$@/$${i}.zip" ]]; then \
+	        printf 'downloading DICOMS for subject %d\n\n' "$$i" ; \
+	        $(SRC_DIR)/xnat/$@/xnat-download.sh $$(grep "^$$i " $<) \
+	                                            "$(DATA_DIR)/xnat/$@" || \
+	            rm "$(DATA_DIR)/xnat/$@/$${i}.zip" ; \
+	    fi ; \
+	    printf "unzip-ing DICOMs for subject %d\n\n" "$$i" ; \
+	    unzip -q "$(DATA_DIR)/xnat/$@/$${i}.zip" \
+	          -d "$(DATA_DIR)/xnat/$@/" && rm "$(DATA_DIR)/xnat/$@/$${i}.zip" ; \
+	done ;
+# delete duplicate T1 directories. we'll do smoothing and normalisation manually
+	@find "$(DATA_DIR)/xnat/$@/" -type d -name '*00-PU*' -prune \
+	         -exec bash -c 'echo "deleting derived images" {} ; rm -r {}' \;
+	@echo
+
+################################################################################
+# eprime events: find files, clean and convert into design matrices
+################################################################################
+
 .PHONY : eprime
-eprime : $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
+eprime : $(IDS_FILE) $(DATA_DIR)/$@/
 	@printf 'building design matrices from eprime event lists\n\n'
-	@rm -r "$(BUILD_DIR)/$@" # FIXME
+# FIXME: is it feasible to write a generic per-file or per-subject rule?
+	@rm -rf "$(BUILD_DIR)/$@"
 # copy eprime event files into subject-specific directory structure
 	@targets=($$(cut -d ' ' -f 1 "$<")) ; \
 	for i in $${targets[@]}; do \
@@ -79,33 +128,12 @@ eprime : $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
 	@find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \
 	    'awk -f "$(SRC_DIR)/eprime/eprime-to-csv.awk" -- "{}" > "{}.csv"' \;
 
-.PHONY : images
-images : $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
-	@mkdir -p "$(DATA_DIR)/xnat/$@"
-	@targets=($$(cut -d ' ' -f 1 "$<" | sort)) ; \
-	for i in $${targets[@]}; do \
-	    [[ -d "$(DATA_DIR)/xnat/$@/$$i" ]] && continue ; \
-	    if [[ ! -f "$(DATA_DIR)/xnat/$@/$${i}.zip" ]]; then \
-	        printf 'downloading DICOMS for subject %d\n\n' "$$i" ; \
-	        $(SRC_DIR)/xnat/$@/xnat-download.sh $$(grep "^$$i " $<) \
-	                                            "$(DATA_DIR)/xnat/$@" || \
-	            rm "$(DATA_DIR)/xnat/$@/$${i}.zip" ; \
-	    fi ; \
-	    printf "unzip-ing DICOMs for subject %d\n\n" "$$i" ; \
-	    unzip -q "$(DATA_DIR)/xnat/$@/$${i}.zip" \
-	          -d "$(DATA_DIR)/xnat/$@/" && rm "$(DATA_DIR)/xnat/$@/$${i}.zip" ; \
-	done ;
-# delete duplicate T1 directories. we'll do smoothing and normalisation manually
-	@find "$(DATA_DIR)/xnat/$@/" -type d -name '*00-PU*' -prune \
-	         -exec bash -c 'echo "deleting derived images" {} ; rm -r {}' \;
-	@echo
+################################################################################
+# xnat's subject metadata DB: valid participants will be selected from there
+################################################################################
 
-$(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv : $(SRC_DIR)/xnat/subject_metadata/extract.R
+$(IDS_FILE) : $(SRC_DIR)/xnat/subject_metadata/extract.R
 	@printf '\building subject IDs list\n\n'
 	@mkdir -p "$(BUILD_DIR)/xnat/subject_metadata"
 	Rscript -e 'source("$(SRC_DIR)/xnat/subject_metadata/extract.R")'
-
-.PHONY : clean
-clean :
-	@rm -rf "$(BUILD_DIR)"
 
