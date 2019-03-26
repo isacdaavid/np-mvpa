@@ -24,6 +24,7 @@ build : eprime volbrain_tree volbrain_unzip t1w_brain_extraction
 # volbrain-related rules
 ################################################################################
 
+.PHONY : t1w_brain_extraction
 t1w_brain_extraction : $(VOLBRAIN_IMAGES:.nii=_brain.nii.gz)
 	@echo
 
@@ -84,6 +85,9 @@ images : $(IDS_FILE)
 # delete duplicate T1 directories. we'll do smoothing and normalisation manually
 	@find "$(DATA_DIR)/xnat/$@/" -type d -name '*00-PU*' -prune \
 	         -exec bash -c 'echo "deleting derived images" {} ; rm -r {}' \;
+# delete fMRI sequences with missing volumes (<260)
+	@rm -rf "$(DATA_DIR)/xnat/$@/517/scans/5-fMRI_GazeCueing_1"
+	@rm -rf "$(DATA_DIR)/xnat/$@/812/scans/8-fMRI_GazeCueing_2" # TODO: rescue vols, unique sequence
 	@echo
 
 ################################################################################
