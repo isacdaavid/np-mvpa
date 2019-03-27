@@ -15,10 +15,30 @@ DICOMS = $(shell find $(DATA_DIR)/xnat/images/ -type d -name DICOM | \
                  grep -E '(fMRI_GazeCueing|FSPGR|T2)' | grep -v '00-PU' | sort)
 VOLBRAIN_ZIPS = $(shell find $(DATA_DIR)/volbrain/ -type f -name '*.zip')
 VOLBRAIN_IMAGES = $(shell find data/volbrain/ -type f -name 'native_n_*')
+FMRI_NIFTIS = $(shell find $(DATA_DIR)/xnat/images/ -type f \
+                      -name '*nifti.nii.gz' | grep GazeCueing | sort)
 
 .PHONY : build all
 all : build
-build : eprime volbrain_tree volbrain_unzip t1w_brain_extraction
+build : eprime volbrain_tree volbrain_unzip feat-prepro
+
+################################################################################
+# FSL FEAT preprocessing
+################################################################################
+
+.PHONY : feat-prepro
+#TODO: add prerequisite to _brain.nii.gz images, so as to complete dependency graphl
+feat-prepro : $(addsuffix .feat,$(subst /resources/nifti.nii.gz,,$(subst xnat/images,feat,$(FMRI_NIFTIS))))
+	@echo
+
+$(DATA_DIR)/feat/%.feat : $(DATA_DIR)/xnat/images/%/resources/nifti.nii.gz $(SRC_DIR)/feat/design.fsf
+	@t1dir=$(subst feat,volbrain,$@) ; \
+	t1dir=$${t1dir%scans*} ; \
+	t1=$$(find "$$t1dir" -name '*_brain.nii.gz') ; \
+	featdir=$@ ; mkdir -p "$${featdir%/*}" ; \
+	sed "s|MVPA_OUTPUTDIR|$$(pwd)/$@| ; s|MVPA_FEAT_FILES|$$(pwd)/$<| ; s|MVPA_HIGHRES_FILES|$$(pwd)/$$t1|" \
+	     "$(SRC_DIR)/feat/design.fsf" > "$@.design.fsf" ; \
+	feat "$@.design.fsf" ; sleep 5m
 
 ################################################################################
 # volbrain-related rules
