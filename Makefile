@@ -33,7 +33,8 @@ feat-brains : $(FEAT_NIFTIS:%=%/filtered_func_data_brain.nii.gz)
 	@echo
 
 %/filtered_func_data_brain.nii.gz : %/volbrain-mask.nii.gz %/filtered_func_data.nii.gz
-	fslmaths "$(subst _brain,,$@)" -mul "$<" "$@"
+	@echo 'extracting EPI brain to $@'
+	@fslmaths "$(subst _brain,,$@)" -mul "$<" "$@"
 
 %/filtered_func_data.nii.gz : % ;
 
