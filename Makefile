@@ -17,27 +17,64 @@ VOLBRAIN_ZIPS = $(shell find $(DATA_DIR)/volbrain/ -type f -name '*.zip')
 VOLBRAIN_IMAGES = $(shell find data/volbrain/ -type f -name 'native_n_*')
 FMRI_NIFTIS = $(shell find $(DATA_DIR)/xnat/images/ -type f \
                       -name '*nifti.nii.gz' | grep GazeCueing | sort)
+FEAT_NIFTIS = $(subst /resources/nifti.nii.gz,.feat, \
+                      $(subst xnat/images,feat,$(FMRI_NIFTIS)))
 
 .PHONY : build all
 all : build
-build : eprime volbrain_tree volbrain_unzip feat-prepro
+build : eprime volbrain_tree volbrain_unzip feat-brains
+
+################################################################################
+# post-FEAT brain extraction-related rules
+################################################################################
+
+.PHONY : feat-brains
+feat-brains : $(FEAT_NIFTIS:%=%/filtered_func_data_brain.nii.gz)
+	@echo
+
+%/filtered_func_data_brain.nii.gz : %/volbrain-mask.nii.gz %/filtered_func_data.nii.gz
+	fslmaths "$(subst _brain,,$@)" -mul "$<" "$@"
+
+%/filtered_func_data.nii.gz : % ;
+
+.PHONY : feat-masks
+feat-masks : $(FEAT_NIFTIS:%=%/volbrain-mask.nii.gz)
+	@echo
+
+#TODO: add prerequisite to _brain.nii.gz images, so as to complete dependency graph.
+#      deduplicate per-scan masks, since they are all the same for a given subj.
+%/volbrain-mask.nii.gz : %/reg/highres2example_func.mat %/example_func.nii.gz
+	@echo 'creating EPI mask $@'
+	@orig_mask_dir=$(subst feat,volbrain,$@) ; \
+	orig_mask=$$(find "$${orig_mask_dir/scans*/}" -name '*mask*') ; \
+	flirt -interp nearestneighbour \
+	      -in "$$orig_mask" \
+	      -ref "$(subst volbrain-mask,example_func,$@)" \
+	      -applyxfm \
+	      -init "$(subst volbrain-mask.nii.gz,reg/highres2example_func.mat,$@)" \
+	      -out "$@"
+
+%/reg/highres2example_func.mat : % ;
+
+%/example_func.nii.gz : % ;
 
 ################################################################################
 # FSL FEAT preprocessing
 ################################################################################
 
 .PHONY : feat-prepro
-#TODO: add prerequisite to _brain.nii.gz images, so as to complete dependency graphl
+#TODO: add prerequisite to _brain.nii.gz images, so as to complete dependency graph
 feat-prepro : $(addsuffix .feat,$(subst /resources/nifti.nii.gz,,$(subst xnat/images,feat,$(FMRI_NIFTIS))))
 	@echo
 
 $(DATA_DIR)/feat/%.feat : $(DATA_DIR)/xnat/images/%/resources/nifti.nii.gz $(SRC_DIR)/feat/design.fsf
+	@echo 'FEAT preprocessing at $@'
 	@t1dir=$(subst feat,volbrain,$@) ; \
 	t1dir=$${t1dir%scans*} ; \
 	t1=$$(find "$$t1dir" -name '*_brain.nii.gz') ; \
 	featdir=$@ ; mkdir -p "$${featdir%/*}" ; \
 	sed "s|MVPA_OUTPUTDIR|$$(pwd)/$@| ; s|MVPA_FEAT_FILES|$$(pwd)/$<| ; s|MVPA_HIGHRES_FILES|$$(pwd)/$$t1|" \
-	     "$(SRC_DIR)/feat/design.fsf" > "$@.design.fsf" ; \
+	    "$(SRC_DIR)/feat/design.fsf" > "$@.design.fsf" ; \
 	feat "$@.design.fsf" ; sleep 5m
 
 ################################################################################
@@ -107,7 +144,8 @@ images : $(IDS_FILE)
 	         -exec bash -c 'echo "deleting derived images" {} ; rm -r {}' \;
 # delete fMRI sequences with missing volumes (<260)
 	@rm -rf "$(DATA_DIR)/xnat/$@/517/scans/5-fMRI_GazeCueing_1"
-	@rm -rf "$(DATA_DIR)/xnat/$@/812/scans/8-fMRI_GazeCueing_2" # TODO: rescue vols, unique sequence
+# TODO: rescue vols, unique sequence
+	@rm -rf "$(DATA_DIR)/xnat/$@/812/scans/8-fMRI_GazeCueing_2"
 	@echo
 
 ################################################################################
@@ -160,4 +198,3 @@ $(IDS_FILE) : $(SRC_DIR)/xnat/subject_metadata/extract.R
 	@printf '\building subject IDs list\n\n'
 	@mkdir -p "$(BUILD_DIR)/xnat/subject_metadata"
 	Rscript -e 'source("$(SRC_DIR)/xnat/subject_metadata/extract.R")'
-
