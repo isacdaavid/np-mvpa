@@ -12,16 +12,16 @@
 # column trigger the creation of a new row, which is filled according to the
 # current state of the program and some default values.
 #
-# TIME                     AGE  SEX  HANDEDNESS  VISUA FACE FACE_GENDER EMOTION  GAZE           TARGET          RESPONSE
+# TIME                     AGE  SEX  HANDEDNESS  BLOCKNUM VISUA FACE FACE_GENDER EMOTION  GAZE           TARGET          RESPONSE
 #
-# $FixationPoint.OnsetTime $Age $Sex $Handedness obj   n    n           n        n              n               n
-# $DirectGaze.OnsetTime    $Age $Sex $Handedness obj   y    $Gender     $Emotion n              n               n
-# $AvertedGaze.OnsetTime   $Age $Sex $Handedness obj   y    $Gender     $Emotion $GazeDirection n               n
-# $Target.OnsetTime        $Age $Sex $Handedness obj   y    $Gender     $Emotion $GazeDirection $TargetPosition n
-# $Target.RTTime           $Age $Sex $Handedness obj   y    $Gender     $Emotion $GazeDirection $TargetPosition $Target.RESP
-# $FinishTiral.OnsetTime   $Age $Sex $Handedness blank n    n           n        n              n               n
+# $FixationPoint.OnsetTime $Age $Sex $Handedness #        obj   n    n           n        n              n               n
+# $DirectGaze.OnsetTime    $Age $Sex $Handedness #        obj   y    $Gender     $Emotion n              n               n
+# $AvertedGaze.OnsetTime   $Age $Sex $Handedness #        obj   y    $Gender     $Emotion $GazeDirection n               n
+# $Target.OnsetTime        $Age $Sex $Handedness #        obj   y    $Gender     $Emotion $GazeDirection $TargetPosition n
+# $Target.RTTime           $Age $Sex $Handedness #        obj   y    $Gender     $Emotion $GazeDirection $TargetPosition $Target.RESP
+# $FinishTiral.OnsetTime   $Age $Sex $Handedness #        blank n    n           n        n              n               n
 
-/Age:/ { age=$2 }
+/Age:/ { age=$2 ; block=1 }
 /Sex:/ { sex=$2 }
 /Handedness:/ { hand=$2 }
 /Gender:/ { face_gender=$2 }
@@ -31,30 +31,31 @@
 /Target.RTTime:/ { button_time=$2 }
 
 /FixationPoint.OnsetTime:/ {
-    print $2 "\t" age "\t" sex "\t" hand "\t" "obj" "\t" "n" "\t" "n" "\t" "n" "\t" "n" "\t" "n" "\t" "n"
+    print $2 "\t" age "\t" sex "\t" hand "\t" block "\t" "obj" "\t" "n" "\t" "n" "\t" "n" "\t" "n" "\t" "n" "\t" "n"
 }
 
 /DirectGaze.OnsetTime:/ {
-    print $2 "\t" age "\t" sex "\t" hand "\t" "obj" "\t" "face" "\t" face_gender "\t" emotion "\t" "n" "\t" "n" "\t" "n"
+    print $2 "\t" age "\t" sex "\t" hand "\t" block "\t" "obj" "\t" "face" "\t" face_gender "\t" emotion "\t" "n" "\t" "n" "\t" "n"
 }
 
 /AvertedGaze.OnsetTime:/ {
-    print $2 "\t" age "\t" sex "\t" hand "\t" "obj" "\t" "face" "\t" face_gender "\t" emotion "\t" gaze "\t" "n" "\t" "n"
+    print $2 "\t" age "\t" sex "\t" hand "\t" block "\t" "obj" "\t" "face" "\t" face_gender "\t" emotion "\t" gaze "\t" "n" "\t" "n"
 }
 
 /Target.OnsetTime:/ {
-    print $2 "\t" age "\t" sex "\t" hand "\t" "obj" "\t" "face" "\t" face_gender "\t" emotion "\t" gaze "\t" target "\t" "n"
+    print $2 "\t" age "\t" sex "\t" hand "\t" block "\t" "obj" "\t" "face" "\t" face_gender "\t" emotion "\t" gaze "\t" target "\t" "n"
 }
 
 /Target.RESP:/ {
     if (button_time != 0) { # don't assume a button was actually pressed
         resp = (($2 == "a" || $2 == "b") ? "left" : "right")
-        print button_time "\t" age "\t" sex "\t" hand "\t" "obj" "\t" "face" "\t" face_gender "\t" emotion "\t" gaze "\t" target "\t" resp
+        print button_time "\t" age "\t" sex "\t" hand "\t" block "\t" "obj" "\t" "face" "\t" face_gender "\t" emotion "\t" gaze "\t" target "\t" resp
     }
 }
 
 /FinishTiral.OnsetTime:/ {
-    print $2 "\t" age "\t" sex "\t" hand "\t" "blank" "\t" "n" "\t" "n" "\t" "n" "\t" "n" "\t" "n" "\t" "n"
+    print $2 "\t" age "\t" sex "\t" hand "\t" block "\t" "blank" "\t" "n" "\t" "n" "\t" "n" "\t" "n" "\t" "n" "\t" "n"
+    block=block+1
 }
 
 # direct gaze sequence (gaze cuing control) ####################################
@@ -62,9 +63,9 @@
 # onset times are borked, commented out for now
 
 # /FixationTr.OnsetTime:/ {
-#     print $2 "\t" age "\t" sex "\t" hand "\t" "obj" "\t" "n" "\t" "n" "\t" "n" "\t" "n" "\t" "n" "\t" "n"
+#     print $2 "\t" age "\t" sex "\t" hand "\t" block "\t" "obj" "\t" "n" "\t" "n" "\t" "n" "\t" "n" "\t" "n" "\t" "n"
 # }
 
 # /DirectGazeNull.OnsetTime:/ {
-#     print $2 "\t" age "\t" sex "\t" hand "\t" "obj" "\t" "face" "\t" face_gender "\t" emotion "\t" "n" "\t" "n" "\t" "n"
+#     print $2 "\t" age "\t" sex "\t" hand "\t" block "\t" "obj" "\t" "face" "\t" face_gender "\t" emotion "\t" "n" "\t" "n" "\t" "n"
 # }

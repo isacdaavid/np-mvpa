@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python2
 
 # author: Isaac David <isacdaavid@at@isacdaavid@dot@info>
 # license: GPLv3 or later
@@ -6,23 +6,18 @@
 from mvpa2.tutorial_suite import *
 import matplotlib.pyplot as plt
 
-# load target attributes (eprime events/design matrix)
-attr_fname = './670-A.csv'
-attr = SampleAttributes(attr_fname,
-                        header = ['onset_time', 'age', 'sex', 'handedness',
-                                  'visual', 'face', 'face_gender', 'emotion',
-                                  'gaze', 'target', 'response'])
-
-# loading fmri data
-bold_fname = './filtered_func_data-volbrain-mask.nii.gz'
-ds = fmri_dataset(bold_fname)
-
 ################################################################################
 # volume labeling
 ################################################################################
 
 SLICE_TIMING_REFERENCE = +1000 # ms
 OPTIMAL_HRF_DELAY = SLICE_TIMING_REFERENCE + 300 # ms
+
+def center_attr_onset_times(attr, tr, elapsed_nvols = 0):
+        onset_times = np.array(attr.onset_time) - attr.onset_time[0] + \
+                      (tr * elapsed_nvols)
+        attr.pop('onset_time')
+        attr['onset_time'] = np.ndarray.tolist(onset_times)
 
 def label(ds, attr, slice_timing_reference, hrf_delay):
         # time-shift for eprime preambulus
@@ -34,20 +29,27 @@ def label(ds, attr, slice_timing_reference, hrf_delay):
         # (tr=2s, interleaved)
         ds.sa.time_coords = (ds.sa.time_coords * 1000) + slice_timing_reference
 
-        # select attributes that correspond to closest volume in the
-        # present or future
         indices = list()
+	# exclude volumes prior to 1 hrf_delay, since they are not supposed to
+	# to reflect a maximum of task-related HRF activity
         for vol_time in ds[ds.sa.time_coords >= hrf_delay].sa.time_coords:
-                match_floor = max(onset_times[onset_times <= (vol_time
-                                                              - hrf_delay)])
+                # select latest event to occur before (vol_time - hrf_delay)
+                match_floor = \
+		    max(onset_times[onset_times <= (vol_time - hrf_delay)])
                 indices.append(attr.onset_time.index(match_floor))
 
+	# excluded premature volumes will be assigned the attributes of first
+	# non-excluded volume
+	useless_vols = 0
         while(len(indices) < len(ds)):
-                indices.append(indices[-1])
+                indices.insert(0, indices[0])
+		useless_vols = useless_vols + 1
 
-        # add
+        # label volumes according to attribute sublist
         for at in attr.keys():
                 ds.sa[at] = [attr[at][index] for index in indices]
+
+	return ds[useless_vols:]
 
 ################################################################################
 # extra preprocessing
@@ -71,30 +73,33 @@ def prepro(ds):
 # classification
 ################################################################################
 
-# balanced subsampling of volumes
-def subsample(ds):
-        max_samples_per_cat = min(np.unique(ds[{'emotion': ['happy', 'sad', 'neutral']}].sa.emotion,
-                                            return_counts = True)[1])
-        dssub = ds[{'emotion': ['happy']}][:max_samples_per_cat]
-        dssub = vstack((dssub, ds[{'emotion': ['sad']}][:max_samples_per_cat]))
-        dssub = vstack((dssub, ds[{'emotion': ['neutral']}][:max_samples_per_cat]))
-        return dssub
+def subsample(ds0):
+	ds1 = ds0[{'emotion': ['happy', 'neutral', 'sad']}]
+	# sample from independent blocks so as to avoid temporally-correlated
+        # volumes in both training and test partitions. take earliest volume
+	indep = []
+	for b in np.unique(ds1.sa.block):
+        	indep.append(min(ds1[{'block': [b]}].sa.time_indices))
+	ds2 = ds1[{'time_indices': indep}]
+
+	# good machines are emotionally-balanced machines ;)
+        max_samples = min(np.unique(ds2[{'emotion': ['happy',
+	                                             'sad',
+	                                             'neutral']}].sa.emotion,
+                                    return_counts = True)[1])
+        ds3 = ds2[{'emotion': ['happy']}][:max_samples]
+        ds3 = vstack((ds3, ds2[{'emotion': ['sad']}][:max_samples]))
+        ds3 = vstack((ds3, ds2[{'emotion': ['neutral']}][:max_samples]))
+
+	return ds3
 
 def train(ds):
-        # please crossvalidation()'s stubborness
-        ds.sa['chunks'] = [1] * len(ds.samples) # all samples belong to 1 chunk
-        ds.sa['targets'] = ds.sa.emotion        # label attribute
-        parity = [0, 1]  * (len(ds.samples) / 2) # partition attribute
-        parity.append(0) if ((len(ds) / 3) % 2 == 1) else True
-        ds.sa['parity'] = parity
-
+        ds.sa['targets'] = ds.sa.emotion # this is the label/target attribute
         clf = LinearCSVMC()
-        cvte = CrossValidation(clf, HalfPartitioner(attr='parity'),
+        cvte = CrossValidation(clf, NFoldPartitioner(attr = 'block'),
                                errorfx = lambda p, t: np.mean(p == t),
                                enable_ca=['stats'])
         return clf,cvte
-
-
 
 ################################################################################
 # sensibility analysis
@@ -117,20 +122,32 @@ def sensibility_map(model, ds, significance = .05):
 # main
 ################################################################################
 
+# load eprime events/design matrix (aka target attributes)
+attr_fname = 'out/eprime/670/A.txt.csv'
+attr = SampleAttributes(attr_fname,
+                        header = ['onset_time', 'age', 'sex', 'handedness',
+                                  'block', 'visual', 'face', 'face_gender',
+	                          'emotion', 'gaze', 'target', 'response'])
+
+# loading fmri data
+bold_fname = 'data/feat/670/scans/5-fMRI_GazeCueing_1.feat/filtered_func_data_brain.nii.gz'
+
 result_dist = []
-for delay in range(OPTIMAL_HRF_DELAY, OPTIMAL_HRF_DELAY + 1, 1):
+for delay in range(9600, 9601, 1):
         ds = fmri_dataset(bold_fname)
-        label(ds, attr, SLICE_TIMING_REFERENCE, delay)
-        ds2 = prepro(ds)
-        # nimg = map2nifti(ds, ds2) # use ds.mapper to preserve preprocessing
+        ds2 = label(ds, attr, SLICE_TIMING_REFERENCE, delay)
+        ds3 = prepro(ds2)
+
+        # nimg = map2nifti(ds, ds3) # use ds.mapper to preserve preprocessing
         # nimg.to_filename('./filtered_func_data_pymvpa.nii.gz')
-        ds2 = subsample(ds2)
-        model,validator = train(ds2)
-        results = validator(ds2)
+
+        ds4 = subsample(ds3)
+        model,validator = train(ds4)
+        results = validator(ds4)
 
         # display results
         result_dist.append(np.mean(results))
-        print('mean accuracy: ' + str(np.mean(results)))
+        print(str(ds4.nsamples / 3) + '\tmean accuracy: ' + str(np.mean(results)))
 
 plt.plot(result_dist)
 plt.hist(result_dist, bins=1000)
@@ -142,9 +159,9 @@ validator.ca.stats.plot()
 plt.show()
 
 # sensibility map
-weights = sensibility_map(model, ds2, 1)
+weights = sensibility_map(model, ds4, 1)
 # percentage of voxels with non-zero weights
-print(len(weights[weights != 0.0]) / float(len(weights))) # .1676
+print(len(weights[weights != 0.0]) / float(len(weights)))
 # distribution of non-zero weights, normalized to the maximum weight
 plt.hist(weights[weights != 0] / max(weights), bins=50)
 
