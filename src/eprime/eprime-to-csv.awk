@@ -21,7 +21,7 @@
 # $Target.RTTime           $Age $Sex $Handedness #        obj   y    $Gender     $Emotion $GazeDirection $TargetPosition $Target.RESP
 # $FinishTiral.OnsetTime   $Age $Sex $Handedness #        blank n    n           n        n              n               n
 
-/Age:/ { age=$2 ; block=1 }
+/Age:/ { age=$2 ; block=1 ; bad_file=1 }
 /Sex:/ { sex=$2 }
 /Handedness:/ { hand=$2 }
 /Gender:/ { face_gender=$2 }
@@ -31,6 +31,7 @@
 /Target.RTTime:/ { button_time=$2 }
 
 /FixationPoint.OnsetTime:/ {
+    bad_file=0
     print $2 "\t" age "\t" sex "\t" hand "\t" block "\t" "obj" "\t" "n" "\t" "n" "\t" "n" "\t" "n" "\t" "n" "\t" "n"
 }
 
@@ -50,6 +51,9 @@
     if (button_time != 0) { # don't assume a button was actually pressed
         resp = (($2 == "a" || $2 == "b") ? "left" : "right")
         print button_time "\t" age "\t" sex "\t" hand "\t" block "\t" "obj" "\t" "face" "\t" face_gender "\t" emotion "\t" gaze "\t" target "\t" resp
+    }
+    if (bad_file == 1) {
+	block=block+1
     }
 }
 
