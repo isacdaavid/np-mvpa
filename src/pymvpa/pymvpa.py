@@ -7,12 +7,20 @@ from mvpa2.tutorial_suite import *
 import matplotlib.pyplot as plt
 import sys
 
+# arguments passed to script
+ATTR_FNAME = sys.argv[1]
+BOLD_FNAME = sys.argv[2]
+OUTDIR = sys.argv[3]
+
+# time step between different HRF delays, in order to find the one that
+# maximizes correct classification
+STEP = 100 # ms
+
 ################################################################################
 # volume labeling
 ################################################################################
 
 SLICE_TIMING_REFERENCE = +1000 # ms
-OPTIMAL_HRF_DELAY = SLICE_TIMING_REFERENCE + 300 # ms
 
 def center_attr_onset_times(attr, tr, elapsed_nvols = 0):
         onset_times = np.array(attr.onset_time) - attr.onset_time[0] + \
@@ -106,10 +114,13 @@ def train(ds):
 # sensitivity analysis
 ################################################################################
 
-# outputs an "activation" map (rather, a sensibility map)
-def sensibility_map(model, ds):
-        sensana = model.get_sensitivity_analyzer()
-        sens = sensana(ds)
+def sensibility_maps_aux(model, ds):
+        analyzer = model.get_sensitivity_analyzer()
+        return analyzer(ds)
+
+# outputs the computed "activation" maps (rather, sensibility maps)
+def sensibility_maps(model, ds):
+        sens = sensibility_maps_aux(model, ds)
         for i in range(0, len(sens.targets)):
                 sensmap = sens.targets[i]
                 # emotional vs neutral
@@ -136,42 +147,35 @@ def normalize_weights(weights, significance = .05):
         ntile = np.sort(abs(weights))[-int(round(len(weights) * significance))]
         return np.array([(0 if (x < ntile) else x) for x in abs(weights)])
 
+# percentage of voxels with non-zero weights
+def non_empty_weights_proportion(weights):
+        return len(weights[weights != 0.0]) / float(len(weights))
+
 ################################################################################
 # main
 ################################################################################
 
 # load eprime events/design matrix (aka target attributes)
-ATTR_FNAME = sys.argv[1]
 attr = SampleAttributes(ATTR_FNAME,
                         header = ['onset_time', 'age', 'sex', 'handedness',
                                   'block', 'visual', 'face', 'face_gender',
                                   'emotion', 'gaze', 'target', 'response'])
 
-# loading fmri data
-BOLD_FNAME = sys.argv[2]
-
-STEP = 200 # ms
 result_dist = []
-for delay in range(0, 600, STEP):
+fo = open(OUTDIR + "/result-time-series.txt", "w+")
+for delay in range(0, 20000, STEP):
         ds = fmri_dataset(BOLD_FNAME)
         ds2 = label(ds, attr, SLICE_TIMING_REFERENCE, delay)
         ds3 = prepro(ds2)
-
-        # nimg = map2nifti(ds, ds3) # use ds.mapper to preserve preprocessing
-        # nimg.to_filename('./filtered_func_data_pymvpa.nii.gz')
-
         ds4 = subsample(ds3)
         model,validator = train(ds4)
         results = validator(ds4)
-
-        # display results
         result_dist.append(np.mean(results))
-        print(str(ds4.nsamples / 3) + '\tmean accuracy: ' + str(np.mean(results)))
+        sens = sensibility_maps_aux(model, ds4)
+        weights = sens[0].samples[0] + sens[1].samples[0] + sens[2].samples[0]
+        fo.writelines(str(ds4.nsamples / 3) + " " + str(np.mean(results)) + " "
+                      + str(non_empty_weights_proportion(weights)) + "\n")
 
-OUTDIR = sys.argv[3]
-
-fo = open(OUTDIR + "/result-time-series.txt", "w+")
-fo.writelines("%s\n" % item for item in result_dist)
 fo.close()
 
 plt.plot(result_dist)
@@ -181,7 +185,7 @@ plt.hist(result_dist, bins=1000)
 plt.savefig(OUTDIR + '/result-dist.svg')
 plt.close()
 
-# best result
+# best model
 optimal_delay = result_dist.index(max(result_dist)) * STEP
 ds = fmri_dataset(BOLD_FNAME)
 ds2 = label(ds, attr, SLICE_TIMING_REFERENCE, optimal_delay)
@@ -197,12 +201,14 @@ plt.savefig(OUTDIR + '/conf-matrix.svg')
 plt.close()
 
 # sensibility map
-all_weights,emo_vs_neu,hap_vs_sad = sensibility_map(model, ds4)
-# percentage of voxels with non-zero weights
-print(len(all_weights[all_weights != 0.0]) / float(len(all_weights)))
+all_weights,emo_vs_neu,hap_vs_sad = sensibility_maps(model, ds4)
+
+print(non_empty_weights_proportion(all_weights))
+
 all_weights = normalize_weights(all_weights, significance = 1)
 emo_vs_neu = normalize_weights(emo_vs_neu, significance = 1)
 hap_vs_sad = normalize_weights(hap_vs_sad, significance = 1)
+
 # distribution of non-zero weights, normalized to the maximum one
 plt.hist(all_weights[all_weights != 0] / max(all_weights), bins=50)
 plt.savefig(OUTDIR + '/weights-dist.svg')

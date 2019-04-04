@@ -22,7 +22,19 @@ FEAT_NIFTIS = $(subst /resources/nifti.nii.gz,.feat, \
 
 .PHONY : build all
 all : build
-build : eprime volbrain_tree volbrain_unzip feat-brains
+build : eprime volbrain_tree volbrain_unzip pymvpa
+
+pymvpa : $(subst data,out,$(FEAT_NIFTIS:%=%/hap_vs_sad-weights-nn.nii.gz)) ;
+
+# FIXME: missing RHS
+%/hap_vs_sad-weights-nn.nii.gz :
+	@outdir=$(subst hap_vs_sad-weights-nn.nii.gz,,$@) ; \
+	nifti=$@ ; nifti=$${nifti/out/data} ; nifti=$${nifti/hap_vs_sad-weights-nn.nii.gz/filtered_func_data_brain.nii.gz} ; \
+	eprime=$$outdir ; eprime=$${eprime/feat/eprime} ; eprime=$${eprime/scans*_/} ; \
+	eprime=$$(echo "$$eprime" | sed -E 's!(1|2|3)(rep)?.feat/!\1.txt.csv!') ; \
+	mkdir -p "$$outdir" ; \
+	echo "running pyMVPA for $$outdir" ; \
+	python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$$eprime" "$$nifti" "$$outdir" > /dev/null 2>&1
 
 ################################################################################
 # post-FEAT brain extraction-related rules
@@ -173,20 +185,20 @@ eprime : $(IDS_FILE) $(DATA_DIR)/$@/
 	    $(BUILD_DIR)/$@/678/{'Gaze Cueing_B Backup1-678-1.txt','Copia de Gaze Cueing_C Backup1-678-1.txt'} \
 	    # $(BUILD_DIR)/$@/678/'Copia de Copia de Gaze Cueing_A Backup1 Backup1-678-1.txt'
 	@mv $(BUILD_DIR)/$@/664/Copia\ de\ Gaze\ Cueing_{C,B}\ Backup1-664-1.txt
-# homogenize disparate file names into {A,B,C}.txt
+# homogenize disparate file names into {1,2,3}.txt
 	@find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \
-	    'mv "{}" $$(echo {} | sed -En "s/(.*)(\/)(.*)(_)(A|B|C)(.*)(.txt)/\1\2\5\7/p")' \;
+	    'mv "{}" $$(echo {} | sed -En "s/(.*)(\/)(.*)(_)(A|B|C)(.*)(.txt)/\1\2\5\7/ ; s/A/1/p ; s/B/2/p ; s/C/3/p")' \;
 # UTF-16 -> UTF-8, CRLF -> LF
 	@find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \
 	    'iconv -f UTF-16 -t UTF-8 "{}" | tr -d "\r" > "{}.new" && mv "{}.new" "{}"' \;
 # more manual fixes (file contents)
-	@sed -i 's/Sex: male/Sex: female/' $(BUILD_DIR)/$@/559/C.txt
-	@sed -i 's/Age: 0/Age: 35/' $(BUILD_DIR)/$@/575/C.txt
-	@sed -i 's/Age: 22/Age: 23/' $(BUILD_DIR)/$@/590/{B,C}.txt
-	@sed -i 's/Age: 0/Age: 31/' $(BUILD_DIR)/$@/672/{A,B}.txt
-	@sed -i 's/Sex: male/Sex: female/' $(BUILD_DIR)/$@/678/B.txt
-	@sed -i 's/Age: 23/Age: 22/' $(BUILD_DIR)/$@/678/C.txt
-	@sed -i 's/Age: 28/Age: 27/' $(BUILD_DIR)/$@/696/C.txt
+	@sed -i 's/Sex: male/Sex: female/' $(BUILD_DIR)/$@/559/3.txt
+	@sed -i 's/Age: 0/Age: 35/' $(BUILD_DIR)/$@/575/3.txt
+	@sed -i 's/Age: 22/Age: 23/' $(BUILD_DIR)/$@/590/{2,3}.txt
+	@sed -i 's/Age: 0/Age: 31/' $(BUILD_DIR)/$@/672/{1,2}.txt
+	@sed -i 's/Sex: male/Sex: female/' $(BUILD_DIR)/$@/678/2.txt
+	@sed -i 's/Age: 23/Age: 22/' $(BUILD_DIR)/$@/678/3.txt
+	@sed -i 's/Age: 28/Age: 27/' $(BUILD_DIR)/$@/696/3.txt
 # eprime event list -> pyMVPA sample attribute matrix
 	@find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \
 	    'awk -f "$(SRC_DIR)/eprime/eprime-to-csv.awk" -- "{}" > "{}.csv"' \;
