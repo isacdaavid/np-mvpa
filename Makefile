@@ -22,19 +22,31 @@ FEAT_NIFTIS = $(subst /resources/nifti.nii.gz,.feat, \
 
 .PHONY : build all
 all : build
-build : eprime volbrain_tree volbrain_unzip pymvpa
+build : volbrain_tree volbrain_unzip pymvpa
+
+################################################################################
+# pyMVPA rules
+################################################################################
 
 pymvpa : $(subst data,out,$(FEAT_NIFTIS:%=%/hap_vs_sad-weights-nn.nii.gz)) ;
 
 # FIXME: missing RHS
 %/hap_vs_sad-weights-nn.nii.gz :
 	@outdir=$(subst hap_vs_sad-weights-nn.nii.gz,,$@) ; \
-	nifti=$@ ; nifti=$${nifti/out/data} ; nifti=$${nifti/hap_vs_sad-weights-nn.nii.gz/filtered_func_data_brain.nii.gz} ; \
+	nifti=$@ ; \
+	nifti=$${nifti/out/data} ; \
+	nifti=$${nifti/hap_vs_sad-weights-nn.nii.gz/filtered_func_data_brain.nii.gz} ; \
 	eprime=$$outdir ; eprime=$${eprime/feat/eprime} ; eprime=$${eprime/scans*_/} ; \
 	eprime=$$(echo "$$eprime" | sed -E 's!(1|2|3)(rep)?.feat/!\1.txt.csv!') ; \
-	mkdir -p "$$outdir" ; \
-	echo "running pyMVPA for $$outdir" ; \
-	python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$$eprime" "$$nifti" "$$outdir" > /dev/null 2>&1
+	if [[ -e "$$eprime" ]]; then \
+	    echo "running pyMVPA for $$outdir" ; \
+	    mkdir -p "$$outdir" ; \
+	    if [ $$((RANDOM % 2)) -eq 0 ]; then \
+	        fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$$eprime" "$$nifti" "$$outdir" > /dev/null 2>&1 ; \
+	    else \
+	        python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$$eprime" "$$nifti" "$$outdir" > /dev/null 2>&1 ; \
+	    fi ; \
+	fi
 
 ################################################################################
 # post-FEAT brain extraction-related rules

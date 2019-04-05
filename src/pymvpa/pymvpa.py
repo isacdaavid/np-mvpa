@@ -3,8 +3,11 @@
 # author: Isaac David <isacdaavid@at@isacdaavid@dot@info>
 # license: GPLv3 or later
 
-from mvpa2.tutorial_suite import *
+import matplotlib
+# Force matplotlib to not use any Xwindows backend
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from mvpa2.tutorial_suite import *
 import sys
 
 # arguments passed to script
