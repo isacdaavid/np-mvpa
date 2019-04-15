@@ -4,8 +4,7 @@
 # license: GPLv3 or later
 
 import matplotlib
-# Force matplotlib to not use any Xwindows backend
-matplotlib.use('Agg')
+matplotlib.use('Agg') # Force matplotlib to not use any Xwindows backend
 import matplotlib.pyplot as plt
 from mvpa2.tutorial_suite import *
 import sys
@@ -50,8 +49,8 @@ def label(ds, attr, slice_timing_reference, hrf_delay):
                         max(onset_times[onset_times <= (vol_time - hrf_delay)])
                 indices.append(attr.onset_time.index(match_floor))
 
-        # excluded premature volumes will be assigned the attributes of first
-        # non-excluded volume
+        # although we won't return them, excluded premature volumes still are
+        # assigned the attributes of the first non-excluded one
         useless_vols = 0
         while(len(indices) < len(ds)):
                 indices.insert(0, indices[0])
@@ -87,12 +86,12 @@ def prepro(ds):
 
 def subsample(ds0):
         ds1 = ds0[{'emotion': ['happy', 'neutral', 'sad']}]
-        # sample from independent blocks so as to avoid temporally-correlated
+        # sample from independent blocks, so as to avoid temporally-correlated
         # volumes in both training and test partitions. take earliest volume
         indep = []
         for b in np.unique(ds1.sa.block):
                 indep.append(min(ds1[{'block': [b]}].sa.time_indices))
-                ds2 = ds1[{'time_indices': indep}]
+        ds2 = ds1[{'time_indices': indep}]
 
         # good machines are emotionally-balanced machines ;)
         max_samples = min(np.unique(ds2[{'emotion': ['happy',
@@ -146,7 +145,7 @@ def sensibility_maps(model, ds):
         return all_weights,emo_vs_neu,hap_vs_sad
 
 # remove sign, take n most significant weights
-def normalize_weights(weights, significance = .05):
+def normalize_weights(weights, significance = 1):
         ntile = np.sort(abs(weights))[-int(round(len(weights) * significance))]
         return np.array([(0 if (x < ntile) else x) for x in abs(weights)])
 
@@ -168,8 +167,8 @@ result_dist = []
 fo = open(OUTDIR + "/result-time-series.txt", "w+")
 for delay in range(0, 20000, STEP):
         ds = fmri_dataset(BOLD_FNAME)
-        ds2 = label(ds, attr, SLICE_TIMING_REFERENCE, delay)
-        ds3 = prepro(ds2)
+        ds3 = label(ds, attr, SLICE_TIMING_REFERENCE, delay)
+        #ds3 = prepro(ds2)
         ds4 = subsample(ds3)
         model,validator = train(ds4)
         results = validator(ds4)
@@ -191,8 +190,8 @@ plt.close()
 # best model
 optimal_delay = result_dist.index(max(result_dist)) * STEP
 ds = fmri_dataset(BOLD_FNAME)
-ds2 = label(ds, attr, SLICE_TIMING_REFERENCE, optimal_delay)
-ds3 = prepro(ds2)
+ds3 = label(ds, attr, SLICE_TIMING_REFERENCE, optimal_delay)
+#ds3 = prepro(ds2)
 ds4 = subsample(ds3)
 model,validator = train(ds4)
 results = validator(ds4)

@@ -28,6 +28,7 @@ build : volbrain_tree volbrain_unzip pymvpa
 # pyMVPA rules
 ################################################################################
 
+.PHONY : pymvpa
 pymvpa : $(subst data,out,$(FEAT_NIFTIS:%=%/hap_vs_sad-weights-nn.nii.gz)) ;
 
 # FIXME: missing RHS
