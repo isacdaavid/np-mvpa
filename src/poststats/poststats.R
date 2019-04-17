@@ -50,6 +50,7 @@ for (s in best_scores$subject) {
 
 svg("plt2.svg")
 ggplot(best_scores, aes(x = subject, y = mean_accuracy)) +
+    geom_point(aes(y = mean_mean_accuracy)) +
     geom_line(aes(color = subject), show.legend = FALSE) +
     geom_jitter(aes(color = subject,
                     size = ocurrences,

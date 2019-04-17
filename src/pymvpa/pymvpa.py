@@ -16,19 +16,13 @@ OUTDIR = sys.argv[3]
 
 # time step between different HRF delays, in order to find the one that
 # maximizes correct classification
-STEP = 100 # ms
+STEP = 500 # ms
 
 ################################################################################
 # volume labeling
 ################################################################################
 
 SLICE_TIMING_REFERENCE = +1000 # ms
-
-def center_attr_onset_times(attr, tr, elapsed_nvols = 0):
-        onset_times = np.array(attr.onset_time) - attr.onset_time[0] + \
-                (tr * elapsed_nvols)
-        attr.pop('onset_time')
-        attr['onset_time'] = np.ndarray.tolist(onset_times)
 
 def label(ds, attr, slice_timing_reference, hrf_delay):
         # time-shift for eprime preambulus
@@ -61,24 +55,6 @@ def label(ds, attr, slice_timing_reference, hrf_delay):
                 ds.sa[at] = [attr[at][index] for index in indices]
 
         return ds[useless_vols:]
-
-################################################################################
-# extra preprocessing
-################################################################################
-
-def prepro(ds):
-        # detrending
-        detrender = PolyDetrendMapper(polyord = 1)
-        ds2 = ds.get_mapped(detrender)
-        # poly_detrend(ds, polyord = 1) # in-place alternative
-
-        # intensity normalisation
-        zscorer = ZScoreMapper(chunks_attr = None)
-        zscorer.train(ds2)
-        ds3 = ds2.get_mapped(zscorer)
-        # zscore(ds, chunks_attr = None) # in-place alternative
-
-        return ds3
 
 ################################################################################
 # classification
@@ -175,6 +151,7 @@ for delay in range(0, 20000, STEP):
         result_dist.append(np.mean(results))
         sens = sensibility_maps_aux(model, ds4)
         weights = sens[0].samples[0] + sens[1].samples[0] + sens[2].samples[0]
+	print(np.mean(results))
         fo.writelines(str(ds4.nsamples / 3) + " " + str(np.mean(results)) + " "
                       + str(non_empty_weights_proportion(weights)) + "\n")
 
@@ -183,7 +160,7 @@ fo.close()
 plt.plot(result_dist)
 plt.savefig(OUTDIR + '/result-time-series.svg')
 plt.close()
-plt.hist(result_dist, bins=1000)
+plt.hist(result_dist, bins = 1000)
 plt.savefig(OUTDIR + '/result-dist.svg')
 plt.close()
 
