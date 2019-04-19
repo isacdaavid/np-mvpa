@@ -28,8 +28,8 @@ build : volbrain_tree volbrain_unzip pymvpa
 # pyMVPA rules
 ################################################################################
 
-.PHONY : pymvpa
-pymvpa : $(subst data,out,$(FEAT_NIFTIS:%=%/hap_vs_sad-weights-nn.nii.gz)) ;
+#.PHONY : pymvpa
+#pymvpa : $(subst data,out,$(FEAT_NIFTIS:%=%/hap_vs_sad-weights-nn.nii.gz)) ;
 
 # FIXME: missing RHS
 %/hap_vs_sad-weights-nn.nii.gz :
@@ -48,6 +48,36 @@ pymvpa : $(subst data,out,$(FEAT_NIFTIS:%=%/hap_vs_sad-weights-nn.nii.gz)) ;
 	        python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$$eprime" "$$nifti" "$$outdir" > /dev/null 2>&1 ; \
 	    fi ; \
 	fi
+
+.PHONY : pymvpa
+pymvpa : $(addprefix $(BUILD_DIR)/pymvpa/, $(IDS))
+
+$(BUILD_DIR)/pymvpa/% : $(DATA_DIR)/pymvpa/%
+	@echo "running pyMVPA for $<" ; \
+	mkdir -p "$@" ; \
+	if [ $$((RANDOM % 2)) -eq 0 ]; then \
+	    fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$</events.csv" \
+	                    "$</concat.nii.gz" "$@" > /dev/null 2>&1 ; \
+	else \
+	    python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$</events.csv" \
+	                    "$</concat.nii.gz" "$@" > /dev/null 2>&1 ; \
+	fi ;
+
+.PHONY : concatenate_runs
+concatenate_runs : $(addprefix $(DATA_DIR)/pymvpa/, $(IDS))
+	@echo
+
+$(DATA_DIR)/pymvpa/% : $(DATA_DIR)/feat/%
+	@mkdir -p "$@"
+	@echo 'concatenating runs to $@'
+	@events=($$(find "$(subst $(DATA_DIR)/feat,$(BUILD_DIR)/eprime,$<)" \
+	                 -type f -name '*.csv' | sort)) ; \
+	fmris=($$(find "$<" -type f -name 'filtered_func_data_brain.nii.gz' | \
+	          sed 's/GazeCueing_/ /' | sort -k 2 | sed 's/ /GazeCueing_/')) ; \
+	python2 "$(SRC_DIR)/pymvpa/concatenate-events.py" "$@/events.csv" \
+	        $${events[@]} > /dev/null 2>&1 & \
+	python2 "$(SRC_DIR)/pymvpa/prepro.py" "$@/concat.nii.gz" \
+	        $${fmris[@]} > /dev/null 2>&1
 
 ################################################################################
 # post-FEAT brain extraction-related rules
