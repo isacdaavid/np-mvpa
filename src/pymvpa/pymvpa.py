@@ -77,9 +77,9 @@ def subsample(ds0):
 
 	if max_samples > 32:
 		max_samples = 32
-        ds3 = ds2[{'emotion': ['happy']}][:max_samples:2]
-        ds3 = vstack((ds3, ds2[{'emotion': ['sad']}][:max_samples:2]))
-        ds3 = vstack((ds3, ds2[{'emotion': ['neutral']}][:max_samples:2]))
+        ds3 = ds2[{'emotion': ['happy']}][:max_samples:1]
+        ds3 = vstack((ds3, ds2[{'emotion': ['sad']}][:max_samples:1]))
+        ds3 = vstack((ds3, ds2[{'emotion': ['neutral']}][:max_samples:1]))
 
         return ds3
 
