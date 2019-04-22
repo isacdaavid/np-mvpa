@@ -65,4 +65,13 @@ names(df) <- c("sample_size", "mean_accuracy", "voxel_prop", "subject", "ms")
 df2 <- df[as.numeric(as.character(df$subject)) > 526 &
       df$sample_size > 30, ]
 
+svg('out/poststats/timeseries.svg')
+plot(plot_timeseries(df2))
+dev.off()
+
+best <- user_maxima(df2)
+
+svg('out/poststats/user_maxima.svg')
+plot(plot_maxima_rank(best))
+dev.off()
 

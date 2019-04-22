@@ -22,7 +22,16 @@ FEAT_NIFTIS = $(subst /resources/nifti.nii.gz,.feat, \
 
 .PHONY : build all
 all : build
-build : volbrain_tree volbrain_unzip pymvpa
+build : volbrain_tree volbrain_unzip poststats
+
+################################################################################
+# poststats
+################################################################################
+
+.PHONY : poststats
+poststats : pymvpa
+	@echo 'running result statistics'
+	@Rscript -e 'source("$(SRC_DIR)/poststats/poststats.R")'
 
 ################################################################################
 # pyMVPA rules
