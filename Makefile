@@ -64,13 +64,8 @@ pymvpa : $(addprefix $(BUILD_DIR)/pymvpa/, $(IDS))
 $(BUILD_DIR)/pymvpa/% : $(DATA_DIR)/pymvpa/%
 	@echo "running pyMVPA for $<" ; \
 	mkdir -p "$@" ; \
-	if [ $$((RANDOM % 2)) -eq 0 ]; then \
-	    fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$</events.csv" \
-	                    "$</concat.nii.gz" "$@" > /dev/null 2>&1 ; \
-	else \
-	    python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$</events.csv" \
-	                    "$</concat.nii.gz" "$@" > /dev/null 2>&1 ; \
-	fi ;
+	python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$</events.csv" \
+	        "$</concat.nii.gz" "$@" > /dev/null 2>&1
 
 .PHONY : concatenate_runs
 concatenate_runs : $(addprefix $(DATA_DIR)/pymvpa/, $(IDS))

@@ -16,7 +16,12 @@ OUTDIR = sys.argv[3]
 
 # time step between different HRF delays, in order to find the one that
 # maximizes correct classification
-STEP = 500 # ms
+STEP = 1000 # ms
+TIME_START = 0 # first HRF delay to test for. ms
+TIME_LIMIT = 2000 # maximum HRF delay to test for. ms
+MAX_SAMPLES = 16 # n-fold / 3 (samples per category)
+# number of label permutations used to estimate the null accuracy distribution
+PERMUTATIONS = 3
 
 ################################################################################
 # volume labeling
@@ -75,21 +80,56 @@ def subsample(ds0):
                                                      'neutral']}].sa.emotion,
                                     return_counts = True)[1])
 
-	if max_samples > 32:
-		max_samples = 32
+        if max_samples > MAX_SAMPLES:
+                max_samples = MAX_SAMPLES
         ds3 = ds2[{'emotion': ['happy']}][:max_samples:1]
         ds3 = vstack((ds3, ds2[{'emotion': ['sad']}][:max_samples:1]))
         ds3 = vstack((ds3, ds2[{'emotion': ['neutral']}][:max_samples:1]))
 
+        ds3.sa['targets'] = ds3.sa.emotion # this is the label/target attribute
         return ds3
 
-def train(ds):
-        ds.sa['targets'] = ds.sa.emotion # this is the label/target attribute
+def train(): #, null_dist):
         clf = LinearCSVMC()
-        cvte = CrossValidation(clf, NFoldPartitioner(attr = 'block'),
-                               errorfx = lambda p, t: np.mean(p == t),
-                               enable_ca=['stats'])
-        return clf,cvte
+        cv = CrossValidation(clf, NFoldPartitioner(attr = 'block'),
+                             errorfx = lambda p, t: np.mean(p == t),
+                             enable_ca=['stats']) #, null_dist = null_dist)
+        return clf,cv
+
+################################################################################
+# Monte-Carlo null hypothesis estimation
+################################################################################
+
+def null_cv(permutations = PERMUTATIONS):
+        repeater = Repeater(count = permutations)
+        permutator = AttributePermutator('targets',
+                                         limit={'partitions': 1}, count = 1)
+        clf = LinearCSVMC()
+        partitioner = NFoldPartitioner(attr = 'block')
+        cv = CrossValidation(clf,
+                             ChainNode([partitioner, permutator],
+                                       space = partitioner.get_space()),
+                             errorfx = lambda p, t: np.mean(p == t),
+                             postproc=mean_sample())
+        distr_est = MCNullDist(repeater, tail = 'right',
+                               measure = cv,
+                               enable_ca = ['dist_samples'])
+        cv_mc = CrossValidation(clf,
+                                partitioner,
+                                errorfx = lambda p, t: np.mean(p == t),
+			        postproc=mean_sample(),
+                                null_dist = distr_est,
+                                enable_ca = ['stats'])
+        return clf,cv_mc
+
+def make_null_dist_plot(dist_samples, empirical):
+     pl.hist(dist_samples, bins=100, normed=True, alpha=0.8)
+     pl.axvline(empirical, color='red')
+     # a priori chance-level
+     pl.axvline(0.333, color='black', ls='--')
+     # scale x-axis to full range of possible error values
+     pl.xlim(0,1)
+     pl.xlabel('Average cross-validated classification error')
 
 ################################################################################
 # sensitivity analysis
@@ -116,10 +156,9 @@ def sensibility_maps(model, ds):
                    str(sensmap) == "('sad', 'happy')":
                    i2 = i
 
-        all_weights = (sens[0].samples[0] + sens[1].samples[0] +
-                       sens[2].samples[0]) / 3.0
-        emo_vs_neu = (sens[i1_1].samples[0] + sens[i1_2].samples[0]) / 2.0
-        hap_vs_sad = sens[i2].samples[0]
+        all_weights = abs(sens[0].samples[0]) + abs(sens[1].samples[0]) + abs(sens[2].samples[0])
+        emo_vs_neu = abs(sens[i1_1].samples[0]) + abs(sens[i1_2].samples[0])
+        hap_vs_sad = abs(sens[i2].samples[0])
 
         return all_weights,emo_vs_neu,hap_vs_sad
 
@@ -144,12 +183,11 @@ attr = SampleAttributes(ATTR_FNAME,
 
 result_dist = []
 fo = open(OUTDIR + "/result-time-series.txt", "w+")
-for delay in range(0, 20000, STEP):
+for delay in range(TIME_START, TIME_LIMIT, STEP):
         ds = fmri_dataset(BOLD_FNAME)
         ds3 = label(ds, attr, SLICE_TIMING_REFERENCE, delay)
-        #ds3 = prepro(ds2)
         ds4 = subsample(ds3)
-        model,validator = train(ds4)
+        model,validator = train()
         results = validator(ds4)
         result_dist.append(np.mean(results))
         sens = sensibility_maps_aux(model, ds4)
@@ -167,29 +205,34 @@ plt.hist(result_dist, bins = 1000)
 plt.savefig(OUTDIR + '/result-dist.svg')
 plt.close()
 
-# best model
-optimal_delay = result_dist.index(max(result_dist)) * STEP
+# best model ###################################################################
+
+optimal_delay = (result_dist.index(max(result_dist)) * STEP) + TIME_START
 ds = fmri_dataset(BOLD_FNAME)
 ds3 = label(ds, attr, SLICE_TIMING_REFERENCE, optimal_delay)
-#ds3 = prepro(ds2)
 ds4 = subsample(ds3)
-model,validator = train(ds4)
+# null accuracy estimation using Monte-Carlo method
+model,validator = null_cv(PERMUTATIONS)
 results = validator(ds4)
 
-print(results.samples)
-print(validator.ca.stats.as_string(description = True))
+fo = open(OUTDIR + "/conf-matrix.txt", "w+")
+fo.writelines(validator.ca.stats.as_string(description = True))
+fo.close()
+
 validator.ca.stats.plot()
 plt.savefig(OUTDIR + '/conf-matrix.svg')
 plt.close()
 
-# sensibility map
+fo = open(OUTDIR + '/null-dist.txt', "w+")
+fo.writelines("\n".join(str(i) for i in cv_mc.null_dist.ca.dist_samples.samples.tolist()[0][0])
+fo.close()
+
+make_null_dist_plot(np.ravel(validator.null_dist.ca.dist_samples), np.mean(results))
+plt.savefig(OUTDIR + '/null-dist.svg')
+
+# sensibility maps #############################################################
+
 all_weights,emo_vs_neu,hap_vs_sad = sensibility_maps(model, ds4)
-
-print(non_empty_weights_proportion(all_weights))
-
-all_weights = normalize_weights(all_weights, significance = 1)
-emo_vs_neu = normalize_weights(emo_vs_neu, significance = 1)
-hap_vs_sad = normalize_weights(hap_vs_sad, significance = 1)
 
 # distribution of non-zero weights, normalized to the maximum one
 plt.hist(all_weights[all_weights != 0] / max(all_weights), bins=50)
@@ -203,3 +246,4 @@ nimg = map2nifti(ds, emo_vs_neu)
 nimg.to_filename(OUTDIR + '/emo-vs-neu-weights-nn.nii.gz')
 nimg = map2nifti(ds, hap_vs_sad)
 nimg.to_filename(OUTDIR + '/hap_vs_sad-weights-nn.nii.gz')
+
