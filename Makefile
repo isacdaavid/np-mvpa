@@ -22,7 +22,7 @@ FEAT_NIFTIS = $(subst /resources/nifti.nii.gz,.feat, \
 
 .PHONY : build all
 all : build
-build : volbrain_tree volbrain_unzip poststats
+build : volbrain_tree volbrain_unzip pymvpa
 
 ################################################################################
 # poststats
@@ -64,8 +64,8 @@ pymvpa : $(addprefix $(BUILD_DIR)/pymvpa/, $(IDS))
 $(BUILD_DIR)/pymvpa/% : $(DATA_DIR)/pymvpa/%
 	@echo "running pyMVPA for $<" ; \
 	mkdir -p "$@" ; \
-	python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$</events.csv" \
-	        "$</concat.nii.gz" "$@" > /dev/null 2>&1
+	fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$</events.csv" \
+	        "$</concat.nii.gz" "$@" #> /dev/null 2>&1
 
 .PHONY : concatenate_runs
 concatenate_runs : $(addprefix $(DATA_DIR)/pymvpa/, $(IDS))

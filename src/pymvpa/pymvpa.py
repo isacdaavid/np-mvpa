@@ -16,12 +16,12 @@ OUTDIR = sys.argv[3]
 
 # time step between different HRF delays, in order to find the one that
 # maximizes correct classification
-STEP = 1000 # ms
+STEP = 200 # ms
 TIME_START = 0 # first HRF delay to test for. ms
-TIME_LIMIT = 2000 # maximum HRF delay to test for. ms
+TIME_LIMIT = 20000 # maximum HRF delay to test for. ms
 MAX_SAMPLES = 16 # n-fold / 3 (samples per category)
 # number of label permutations used to estimate the null accuracy distribution
-PERMUTATIONS = 3
+PERMUTATIONS = 5000
 
 ################################################################################
 # volume labeling
@@ -156,16 +156,31 @@ def sensibility_maps(model, ds):
                    str(sensmap) == "('sad', 'happy')":
                    i2 = i
 
-        all_weights = abs(sens[0].samples[0]) + abs(sens[1].samples[0]) + abs(sens[2].samples[0])
-        emo_vs_neu = abs(sens[i1_1].samples[0]) + abs(sens[i1_2].samples[0])
-        hap_vs_sad = abs(sens[i2].samples[0])
+        all_weights = normalize_weights(np.array([sens[0].samples[0],
+	                                          sens[1].samples[0],
+                                                  sens[2].samples[0]]))
+        emo_vs_neu = normalize_weights(np.array([sens[i1_1].samples[0],
+                                                 sens[i1_2].samples[0]]))
+        hap_vs_sad = normalize_weights(np.array([sens[i2].samples[0]]))
 
         return all_weights,emo_vs_neu,hap_vs_sad
 
-# remove sign, take n most significant weights
-def normalize_weights(weights, significance = 1):
-        ntile = np.sort(abs(weights))[-int(round(len(weights) * significance))]
-        return np.array([(0 if (x < ntile) else x) for x in abs(weights)])
+# - remove sign (there's no interpretation to feature importance direction in
+#   orthogonal vector to SVM hyperplane, other than encoding class)
+# - L2-normalize to make sure vector sum is meaningful
+# - sum
+# - rescale to maximum weight (summed masks will be comparable operators)
+# - optionally, return n most significant weights
+def normalize_weights(weight_lists, significance = 1):
+	for i in range(0, len(weight_lists)):
+		weight_lists[i] = l2_normed(abs(weight_lists[i]))
+	if len(weight_lists) > 1:
+		total = np.sum(weight_lists, axis = 0)
+	else:
+		total = weight_lists[0]
+	total /= max(total)
+        ntile = np.sort(total)[-int(round(len(total) * significance))]
+        return np.array([(0 if (x < ntile) else x) for x in total])
 
 # percentage of voxels with non-zero weights
 def non_empty_weights_proportion(weights):
@@ -224,7 +239,7 @@ plt.savefig(OUTDIR + '/conf-matrix.svg')
 plt.close()
 
 fo = open(OUTDIR + '/null-dist.txt', "w+")
-fo.writelines("\n".join(str(i) for i in cv_mc.null_dist.ca.dist_samples.samples.tolist()[0][0])
+fo.writelines("\n".join(str(i) for i in validator.null_dist.ca.dist_samples.samples.tolist()[0][0]))
 fo.close()
 
 make_null_dist_plot(np.ravel(validator.null_dist.ca.dist_samples), np.mean(results))
