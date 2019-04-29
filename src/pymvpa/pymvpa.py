@@ -14,14 +14,11 @@ ATTR_FNAME = sys.argv[1]
 BOLD_FNAME = sys.argv[2]
 OUTDIR = sys.argv[3]
 
-# time step between different HRF delays, in order to find the one that
-# maximizes correct classification
-STEP = 200 # ms
+STEP = 200 # time step between different HRF delays. ms
 TIME_START = 0 # first HRF delay to test for. ms
 TIME_LIMIT = 20000 # maximum HRF delay to test for. ms
-MAX_SAMPLES = 16 # n-fold / 3 (samples per category)
-# number of label permutations used to estimate the null accuracy distribution
-PERMUTATIONS = 5000
+MAX_SAMPLES = 16 # samples per category = n-fold / 3
+PERMUTATIONS = 5000 # label permutations used to estimate null accuracy distrib
 
 ################################################################################
 # volume labeling
@@ -89,7 +86,7 @@ def subsample(ds0):
         ds3.sa['targets'] = ds3.sa.emotion # this is the label/target attribute
         return ds3
 
-def train(): #, null_dist):
+def train():
         clf = LinearCSVMC()
         cv = CrossValidation(clf, NFoldPartitioner(attr = 'block'),
                              errorfx = lambda p, t: np.mean(p == t),
@@ -242,8 +239,10 @@ fo = open(OUTDIR + '/null-dist.txt', "w+")
 fo.writelines("\n".join(str(i) for i in validator.null_dist.ca.dist_samples.samples.tolist()[0][0]))
 fo.close()
 
-make_null_dist_plot(np.ravel(validator.null_dist.ca.dist_samples), np.mean(results))
+make_null_dist_plot(np.ravel(validator.null_dist.ca.dist_samples),
+                    np.mean(results))
 plt.savefig(OUTDIR + '/null-dist.svg')
+plt.close()
 
 # sensibility maps #############################################################
 

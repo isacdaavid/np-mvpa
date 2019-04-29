@@ -61,9 +61,9 @@ df <- do.call(rbind, lapply(files, function(file) {
 }))
 names(df) <- c("sample_size", "mean_accuracy", "voxel_prop", "subject", "ms")
 
-# subject ids <= 526 have missing events on eprime files
+# subject ids <= 526 have missing events on eprime files. discard them
 df2 <- df[as.numeric(as.character(df$subject)) > 526 &
-      df$sample_size > 30, ]
+          df$sample_size > 30, ]
 
 svg('out/poststats/timeseries.svg')
 plot(plot_timeseries(df2))
