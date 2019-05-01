@@ -90,7 +90,7 @@ def train():
         clf = LinearCSVMC()
         cv = CrossValidation(clf, NFoldPartitioner(attr = 'block'),
                              errorfx = lambda p, t: np.mean(p == t),
-                             enable_ca=['stats']) #, null_dist = null_dist)
+                             enable_ca=['stats'])
         return clf,cv
 
 ################################################################################
