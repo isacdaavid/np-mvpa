@@ -11,12 +11,28 @@ SAMPLE_SIZE <- 16
 
 plot_timeseries <- function(df) {
     ggplot(df, aes(x = ms,
-                       y = mean_accuracy,
-                       group = subject,
-                       color = subject)) +
-    geom_line(aes(alpha=.01), show.legend = FALSE) +
-    scale_x_continuous(breaks = seq(0, 19800, 200)) +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+                   y = mean_accuracy,
+                   group = subject,
+                   color = subject)) +
+        geom_line(aes(alpha=.01), show.legend = FALSE) +
+        scale_x_continuous(breaks = seq(0, 19800, 200)) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+}
+
+plot_mean_timeseries_denoise <- function(df, radii = 0) {
+    df2 <- do.call(rbind, lapply(radii, function(r) {
+        times <- unique(df$ms)
+        data.frame("mean_accuracy" = sapply(times, function(t) {
+                      mean(df[t - r <= df$ms & t + r >= df$ms, 'mean_accuracy'])
+                   }),
+                   "ms" = times,
+                   "radius" = rep(r, length(times))
+        )
+    }))
+    ggplot(df2, aes(x = ms, y = mean_accuracy)) +
+        geom_line(aes(group = -radius, color = radius)) +
+        scale_size_continuous(range = c(1, 5)) +
+        scale_color_gradient(name = "radius (ms)", trans = "log2")
 }
 
 user_maxima <- function(df) {
@@ -85,13 +101,12 @@ df2 <- df[as.numeric(as.character(df$subject)) > 526 &
 nulls <- nulls[nulls$subject %in% df2$subject, ]
 df2 <- df2[df2$subject %in% nulls$subject, ]
 
-ggplot() +
-geom_line(aes(x=unique(df2$ms), y=sapply(unique(df2$ms), function(t) {mean(df2[df2$ms == t, 'mean_accuracy'])})), color=4) +
-scale_x_continuous(breaks = seq(0, 19800, 200)) +
-theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
-
 svg(paste0(OUTPATH, '/timeseries.svg'))
 plot(plot_timeseries(df2))
+dev.off()
+
+svg(paste0(OUTPATH, '/timeseries-mean.svg'))
+plot_mean_timeseries_denoise(df2, c(1, 500, 1000, 2000, 20000))
 dev.off()
 
 best <- user_maxima(df2)
