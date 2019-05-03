@@ -132,6 +132,23 @@ def make_null_dist_plot(dist_samples, empirical):
 # sensitivity analysis
 ################################################################################
 
+# - remove sign (there's no interpretation to feature importance direction in
+#   orthogonal vector to SVM hyperplane, other than encoding class)
+# - L2-normalize to make sure vector sum is meaningful
+# - sum
+# - rescale to maximum weight (summed masks will be comparable operators)
+# - optionally, return n most significant weights
+def normalize_weights(weight_lists, significance = 1):
+	for i in range(0, len(weight_lists)):
+		weight_lists[i] = l2_normed(abs(weight_lists[i]))
+	if len(weight_lists) > 1:
+		total = np.sum(weight_lists, axis = 0)
+	else:
+		total = weight_lists[0]
+	total /= max(total)
+        ntile = np.sort(total)[-int(round(len(total) * significance))]
+        return np.array([(0 if (x < ntile) else x) for x in total])
+
 def sensibility_maps_aux(model, ds):
         analyzer = model.get_sensitivity_analyzer()
         return analyzer(ds)
@@ -161,23 +178,6 @@ def sensibility_maps(model, ds):
         hap_vs_sad = normalize_weights(np.array([sens[i2].samples[0]]))
 
         return all_weights,emo_vs_neu,hap_vs_sad
-
-# - remove sign (there's no interpretation to feature importance direction in
-#   orthogonal vector to SVM hyperplane, other than encoding class)
-# - L2-normalize to make sure vector sum is meaningful
-# - sum
-# - rescale to maximum weight (summed masks will be comparable operators)
-# - optionally, return n most significant weights
-def normalize_weights(weight_lists, significance = 1):
-	for i in range(0, len(weight_lists)):
-		weight_lists[i] = l2_normed(abs(weight_lists[i]))
-	if len(weight_lists) > 1:
-		total = np.sum(weight_lists, axis = 0)
-	else:
-		total = weight_lists[0]
-	total /= max(total)
-        ntile = np.sort(total)[-int(round(len(total) * significance))]
-        return np.array([(0 if (x < ntile) else x) for x in total])
 
 # percentage of voxels with non-zero weights
 def non_empty_weights_proportion(weights):

@@ -22,7 +22,7 @@ FEAT_NIFTIS = $(subst /resources/nifti.nii.gz,.feat, \
 
 .PHONY : build all
 all : build
-build : volbrain_tree volbrain_unzip pymvpa
+build : volbrain_tree volbrain_unzip concatenate_runs
 
 ################################################################################
 # poststats
@@ -207,6 +207,8 @@ images : $(IDS_FILE)
 # TODO: rescue vols, unique sequence
 	@rm -rf "$(DATA_DIR)/xnat/$@/812/scans/8-fMRI_GazeCueing_2"
 	@echo
+# delete fMRI sequences without corresponding emprime events file
+	@rm -rf "$(DATA_DIR)/xnat/$@/535/scans/6-fMRI_GazeCueing_3"
 
 ################################################################################
 # eprime events: find files, clean and convert into design matrices
@@ -246,6 +248,9 @@ eprime : $(IDS_FILE) $(DATA_DIR)/$@/
 	@sed -i 's/Sex: male/Sex: female/' $(BUILD_DIR)/$@/678/2.txt
 	@sed -i 's/Age: 23/Age: 22/' $(BUILD_DIR)/$@/678/3.txt
 	@sed -i 's/Age: 28/Age: 27/' $(BUILD_DIR)/$@/696/3.txt
+# delete files without corresponding fMRI sequence
+	@rm $(BUILD_DIR)/$@/518/{1,2}.txt
+	@rm $(BUILD_DIR)/$@/812/2.txt
 # eprime event list -> pyMVPA sample attribute matrix
 	@find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \
 	    'awk -f "$(SRC_DIR)/eprime/eprime-to-csv.awk" -- "{}" > "{}.csv"' \;
