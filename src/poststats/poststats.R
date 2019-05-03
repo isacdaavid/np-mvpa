@@ -13,7 +13,7 @@ TIME_STEP <- 200 # ms
 plot_timeseries <- function(df) {
     best <- user_maxima(df)
     xbreaks <- seq(0, 19800, TIME_STEP)
-    xlabels <- sapply(breaks,
+    xlabels <- sapply(xbreaks,
                       function(t) {if (t %% 1000 == 0) as.character(t) else ""})
     ybreaks = c(0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1,
                 mean(df$mean_accuracy), 1/3)
@@ -43,7 +43,7 @@ plot_mean_timeseries_denoise <- function(df, radii = 0) {
         )
     }))
     xbreaks <- seq(0, 19800, TIME_STEP)
-    xlabels <- sapply(breaks,
+    xlabels <- sapply(xbreaks,
                       function(t) {if (t %% 1000 == 0) as.character(t) else ""})
     ybreaks = c(seq(0, 1, .02), mean(df$mean_accuracy), 1/3)
     ylabels = c(seq(0, 1, .02), "media", "azar")
@@ -88,11 +88,15 @@ plot_maxima_rank <- function(best) {
                        fill = factor(sample_size),
                        size = ocurrences,
                        alpha = abs(mean(best$ms) - best$ms))) +
-        scale_alpha(range = c(1, .2)) +
-        scale_fill_grey(start = .8, end = .2) +
+        scale_alpha(name = "Separación a tiempo medio (ms)", range = c(1, .2)) +
+        scale_fill_grey(name = "Muestras por clase", start = .8, end = .2) +
+	scale_size(name = "Ocurrencias") +
         theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+	labs(x = "Sujeto", y = "Exactitud máxima de clasificación") +
         guides(colour = FALSE)
 }
+
+# dataset loading and preparation ##############################################
 
 time_series_files <- list.files(path = INPATH,
                                 pattern = "result-time-series.txt",
@@ -124,6 +128,18 @@ df2 <- df[as.numeric(as.character(df$subject)) > 526 &
 nulls <- nulls[nulls$subject %in% df2$subject, ]
 df2 <- df2[df2$subject %in% nulls$subject, ]
 
+best <- user_maxima(df2)
+nulls$subject <- factor(nulls$subject, levels = levels(best$subject))
+
+p_values <- sapply(unique(best$subject), function(s) {
+    h0 <- nulls[nulls$subject == s, 'mean_accuracy']
+    p <- length(h0[h0 >= best[best$subject == s, 'mean_accuracy']]) / length(h0)
+    names(p) <- s
+    return(p)
+})
+
+# plots ########################################################################
+
 svg(paste0(OUTPATH, '/timeseries.svg'), width = 20, height = 3)
 plot(plot_timeseries(df2))
 dev.off()
@@ -131,9 +147,6 @@ dev.off()
 svg(paste0(OUTPATH, '/timeseries-mean.svg'), width = 20, height = 3)
 plot(plot_mean_timeseries_denoise(df2, c(1, 500, 1000, 2000, 20000)))
 dev.off()
-
-best <- user_maxima(df2)
-nulls$subject <- factor(nulls$subject, levels = levels(best$subject))
 
 svg(paste0(OUTPATH, '/user_maxima.svg'))
 plot(plot_maxima_rank(best))
@@ -162,4 +175,3 @@ ggplot() +
     labs(x="", y="Classification accuracy") +
     coord_flip()
 dev.off()
-
