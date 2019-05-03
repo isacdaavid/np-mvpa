@@ -8,15 +8,28 @@ source("src/poststats/R_rainclouds.R")
 INPATH <- 'out/pymvpa/'
 OUTPATH <- 'out/poststats/'
 SAMPLE_SIZE <- 16
+TIME_STEP <- 200 # ms
 
 plot_timeseries <- function(df) {
+    best <- user_maxima(df)
+    xbreaks <- seq(0, 19800, TIME_STEP)
+    xlabels <- sapply(breaks,
+                      function(t) {if (t %% 1000 == 0) as.character(t) else ""})
+    ybreaks = c(0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1,
+                mean(df$mean_accuracy), 1/3)
+    ylabels = c(0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1,
+                "media", "azar")
     ggplot(df, aes(x = ms,
                    y = mean_accuracy,
                    group = subject,
                    color = subject)) +
         geom_line(aes(alpha=.01), show.legend = FALSE) +
-        scale_x_continuous(breaks = seq(0, 19800, 200)) +
-        theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+	geom_point(aes(x = ms, y = mean_accuracy, color = subject), best) +
+        scale_x_continuous(breaks = xbreaks, minor_breaks = NULL, labels = xlabels) +
+	scale_y_continuous(breaks = ybreaks, minor_breaks = NULL, labels = ylabels) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+	labs(x="Retraso estímulo-respuesta (ms)", y="Exactitud de clasificación") +
+	guides(colour = FALSE)
 }
 
 plot_mean_timeseries_denoise <- function(df, radii = 0) {
@@ -29,10 +42,20 @@ plot_mean_timeseries_denoise <- function(df, radii = 0) {
                    "radius" = rep(r, length(times))
         )
     }))
+    xbreaks <- seq(0, 19800, TIME_STEP)
+    xlabels <- sapply(breaks,
+                      function(t) {if (t %% 1000 == 0) as.character(t) else ""})
+    ybreaks = c(seq(0, 1, .02), mean(df$mean_accuracy), 1/3)
+    ylabels = c(seq(0, 1, .02), "media", "azar")
     ggplot(df2, aes(x = ms, y = mean_accuracy)) +
-        geom_line(aes(group = -radius, color = radius)) +
-        scale_size_continuous(range = c(1, 5)) +
-        scale_color_gradient(name = "radius (ms)", trans = "log2")
+        geom_line(aes(group = -radius, color = radius, size = as.factor(radius))) +
+        scale_x_continuous(breaks = xbreaks, minor_breaks = NULL, labels = xlabels) +
+	scale_y_continuous(breaks = ybreaks, minor_breaks = NULL, labels = ylabels) +
+	theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+	labs(x="Retraso estímulo-respuesta (ms)", y="Exactitud media de clasificación") +
+        scale_color_gradient(name = "Radio de suavización (ms)", trans = "log2") +
+        scale_size_manual(values = c(.5, 1, 1.5, 2, 2.5)) +
+        guides(size = FALSE)
 }
 
 user_maxima <- function(df) {
@@ -83,7 +106,7 @@ null_dist_files <- list.files(path = INPATH,
 df <- do.call(rbind, lapply(time_series_files, function(file) {
     df <- read.csv(file, header = FALSE, sep = " ")
     subject <- as.factor(regmatches(file, regexpr("\\d{3}", file)))
-    cbind(df, rep(subject, nrow(df)), 0:(nrow(df) - 1) * 200)
+    cbind(df, rep(subject, nrow(df)), 0:(nrow(df) - 1) * TIME_STEP)
 }))
 names(df) <- c("sample_size", "mean_accuracy", "voxel_prop", "subject", "ms")
 
@@ -101,12 +124,12 @@ df2 <- df[as.numeric(as.character(df$subject)) > 526 &
 nulls <- nulls[nulls$subject %in% df2$subject, ]
 df2 <- df2[df2$subject %in% nulls$subject, ]
 
-svg(paste0(OUTPATH, '/timeseries.svg'))
+svg(paste0(OUTPATH, '/timeseries.svg'), width = 20, height = 3)
 plot(plot_timeseries(df2))
 dev.off()
 
-svg(paste0(OUTPATH, '/timeseries-mean.svg'))
-plot_mean_timeseries_denoise(df2, c(1, 500, 1000, 2000, 20000))
+svg(paste0(OUTPATH, '/timeseries-mean.svg'), width = 20, height = 3)
+plot(plot_mean_timeseries_denoise(df2, c(1, 500, 1000, 2000, 20000)))
 dev.off()
 
 best <- user_maxima(df2)
@@ -139,3 +162,4 @@ ggplot() +
     labs(x="", y="Classification accuracy") +
     coord_flip()
 dev.off()
+
