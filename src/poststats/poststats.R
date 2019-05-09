@@ -4,6 +4,7 @@
 library(ggplot2)
 library(dplyr)
 source("src/poststats/R_rainclouds.R")
+library(reshape2) # acast()
 
 INPATH <- 'out/pymvpa/'
 OUTPATH <- 'out/poststats/'
@@ -15,21 +16,37 @@ plot_timeseries <- function(df) {
     xbreaks <- seq(0, 19800, TIME_STEP)
     xlabels <- sapply(xbreaks,
                       function(t) {if (t %% 1000 == 0) as.character(t) else ""})
-    ybreaks = c(0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1,
-                mean(df$mean_accuracy), 1/3)
-    ylabels = c(0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1,
-                "media", "azar")
+    ybreaks = c(seq(0, 1, .1), mean(df$mean_accuracy), 1/3)
+    ylabels = c(seq(0, 1, .1), "media", "azar")
     ggplot(df, aes(x = ms,
                    y = mean_accuracy,
                    group = subject,
                    color = subject)) +
         geom_line(aes(alpha=.01), show.legend = FALSE) +
-	geom_point(aes(x = ms, y = mean_accuracy, color = subject), best) +
-        scale_x_continuous(breaks = xbreaks, minor_breaks = NULL, labels = xlabels) +
-	scale_y_continuous(breaks = ybreaks, minor_breaks = NULL, labels = ylabels) +
+        geom_point(aes(x = ms, y = mean_accuracy, color = subject), best) +
+        scale_x_continuous(breaks = xbreaks, minor_breaks = NULL,
+                           labels = xlabels) +
+        scale_y_continuous(breaks = ybreaks, minor_breaks = NULL,
+                           labels = ylabels) +
         theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
-	labs(x="Retraso estímulo-respuesta (ms)", y="Exactitud de clasificación") +
-	guides(colour = FALSE)
+        labs(x="Retraso estímulo-respuesta (ms)",
+             y="Exactitud de clasificación") +
+        guides(colour = FALSE)
+}
+
+plot_timeseries_2 <- function(df2, order) {
+    xbreaks <- seq(0, 19800, TIME_STEP)
+    xlabels <- sapply(xbreaks,
+                      function(t) {if (t %% 1000 == 0) as.character(t) else ""})
+    ggplot(df2, aes(x = ms, y = factor(subject, levels = order),
+                    z = mean_accuracy)) +
+        geom_tile(aes(fill = mean_accuracy)) +
+        ## scale_x_discrete(breaks = as.character(xbreaks), labels = xlabels) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+        labs(x = "Retraso estímulo-respuesta (ms)", y = "Sujeto") +
+        scale_fill_gradient2(name = "Exactitud de clasificación",
+                             low = "red", mid = "white",
+                             high = "blue", midpoint = mean(df2$mean_accuracy))
 }
 
 plot_mean_timeseries_denoise <- function(df, radii = 0) {
@@ -48,14 +65,21 @@ plot_mean_timeseries_denoise <- function(df, radii = 0) {
     ybreaks = c(seq(0, 1, .02), mean(df$mean_accuracy), 1/3)
     ylabels = c(seq(0, 1, .02), "media", "azar")
     ggplot(df2, aes(x = ms, y = mean_accuracy)) +
-        geom_line(aes(group = -radius, color = radius, size = as.factor(radius))) +
-        scale_x_continuous(breaks = xbreaks, minor_breaks = NULL, labels = xlabels) +
-	scale_y_continuous(breaks = ybreaks, minor_breaks = NULL, labels = ylabels) +
-	theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
-	labs(x="Retraso estímulo-respuesta (ms)", y="Exactitud media de clasificación") +
-        scale_color_gradient(name = "Radio de suavización (ms)", trans = "log2") +
-        scale_size_manual(values = c(.5, 1, 1.5, 2, 2.5)) +
-        guides(size = FALSE)
+        geom_line(aes(group = radius, color = radius, size = as.factor(radius),
+                      alpha = as.factor(radius))) +
+        scale_x_continuous(breaks = xbreaks, minor_breaks = NULL,
+                           labels = xlabels) +
+        scale_y_continuous(breaks = ybreaks, minor_breaks = NULL,
+                           labels = ylabels) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+        labs(x = "Retraso estímulo-respuesta (ms)",
+             y = "Exactitud de clasificación (media móvil)") +
+        scale_color_gradient(trans = "log2") +
+        scale_size_discrete(name = "Radio de suavización (ms)",
+                            range = c(.5, 2.5)) +
+        scale_alpha_discrete(name = "Radio de suavización (ms)",
+                             range = c(1, 1/3)) +
+        guides(color = FALSE)
 }
 
 user_maxima <- function(df) {
@@ -71,15 +95,9 @@ user_maxima <- function(df) {
 }
 
 plot_maxima_rank <- function(best) {
-    colors = c()
-    col = TRUE
-    prev = best[1, "subject"]
-    for (s in best$subject) {
-        if (s != prev) { col = !col }
-        colors = c(colors, col)
-        prev = s
-    }
-
+    breaks = seq(0, 1, .025)
+    labels = sapply(breaks,
+                    function(a) {if (a %% .05 == 0) as.character(a) else ""})
     ggplot(best, aes(x = subject, y = mean_accuracy)) +
         geom_line(aes(color = subject), show.legend = FALSE) +
         geom_point(#show.legend = FALSE,
@@ -90,10 +108,42 @@ plot_maxima_rank <- function(best) {
                        alpha = abs(mean(best$ms) - best$ms))) +
         scale_alpha(name = "Separación a tiempo medio (ms)", range = c(1, .2)) +
         scale_fill_grey(name = "Muestras por clase", start = .8, end = .2) +
-	scale_size(name = "Ocurrencias") +
+        scale_size(name = "Ocurrencias") +
         theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
-	labs(x = "Sujeto", y = "Exactitud máxima de clasificación") +
+        labs(x = "Sujeto", y = "Exactitud de clasificación (maxima)") +
+        scale_y_continuous(breaks = c(breaks, 1/3, mean(best$mean_accuracy)),
+                           labels = c(labels, "azar", "media"),
+                           minor_breaks = NULL) +
         guides(colour = FALSE)
+}
+
+plot_statistical_test <- function(nulls, best) {
+    ggplot() +
+        geom_abline(slope = 0, intercept = 1/3, color='white') +
+        geom_flat_violin(aes(x = rep(-.25, nrow(nulls)), y = mean_accuracy,
+                             group=subject, fill = subject), nulls,
+                         adjust = .5, trim = FALSE, color = NA, alpha = .5) +
+        geom_flat_violin(aes(x = rep(0, nrow(nulls)), y = mean_accuracy), nulls,
+                         adjust = 1, trim = FALSE, color = NA) +
+        geom_boxplot(aes( x = rep(0, nrow(nulls)), y = mean_accuracy),
+                     nulls, outlier.shape = NA, alpha = .3, width = .01) +
+        geom_flat_violin(aes(x = rep(0, nrow(best)), y = mean_accuracy), best,
+                         fill = 1, adjust = .2, trim = FALSE, color = NA,
+                         alpha = .3) +
+        geom_boxplot(aes(x = rep(0, nrow(best)), y = mean_accuracy),
+                     best, outlier.shape = NA, alpha = .3, width = .01) +
+        geom_point(aes(x = .0125 * as.numeric(subject) - .48,
+                       y = mean_accuracy, color=subject), best, size = 2) +
+        scale_x_continuous(breaks = NULL) +
+        scale_fill_discrete(name = "Sujeto") +
+        scale_color_discrete(name = "Sujeto") +
+        labs(x="", y="Exactitud de clasificación (máxima)") +
+        scale_y_continuous(breaks = c(seq(0, 1, .1), 1/3,
+                                      mean(best$mean_accuracy)),
+                           labels = c(seq(0, 1, .1), "azar", "media"),
+                           minor_breaks = NULL) +
+        ## guides(colour = FALSE, fill = FALSE) +
+        coord_flip()
 }
 
 # dataset loading and preparation ##############################################
@@ -122,9 +172,8 @@ nulls <- do.call(rbind, lapply(null_dist_files, function(file) {
 names(nulls) <- c("mean_accuracy", "subject")
 
 # subject ids <= 526 have missing events on eprime files. discard them
-df2 <- df[as.numeric(as.character(df$subject)) > 526 &
-          df$sample_size >= SAMPLE_SIZE, ]
-# df2 <- df
+df2 <- df[as.numeric(as.character(df$subject)) > 526, ]
+## df2 <- df
 nulls <- nulls[nulls$subject %in% df2$subject, ]
 df2 <- df2[df2$subject %in% nulls$subject, ]
 
@@ -140,38 +189,37 @@ p_values <- sapply(unique(best$subject), function(s) {
 
 # plots ########################################################################
 
-svg(paste0(OUTPATH, '/timeseries.svg'), width = 20, height = 3)
+svg(paste0(OUTPATH, '/timeseries.svg'), width = 20, height = 4)
 plot(plot_timeseries(df2))
 dev.off()
 
-svg(paste0(OUTPATH, '/timeseries-mean.svg'), width = 20, height = 3)
-plot(plot_mean_timeseries_denoise(df2, c(1, 500, 1000, 2000, 20000)))
+order <- list()
+order$best <- rev(levels(best$subject))
+order$first_max <-
+    as.character(best[order(best$ms, best$mean_accuracy, decreasing = TRUE),
+                      'subject'])
+df2_matrix <- acast(df2[, c("subject", "ms", "mean_accuracy")],
+                    subject ~ ms,
+                    value.var = "mean_accuracy")
+df2_matrix <- as.data.frame(df2_matrix)
+subject_cluster <- hclust(dist(df2_matrix, method = "euclidean"),
+                          method = "ward.D")
+order$cluster <- sort(as.character(best$subject))[subject_cluster$order]
+for (i in c('best', 'first_max', 'cluster')) {
+    svg(paste0(OUTPATH, '/timeseries2-', i, '.svg'), width = 20, height = 4)
+    plot(plot_timeseries_2(df2, order[i][[1]]))
+    dev.off()
+}
+
+svg(paste0(OUTPATH, '/timeseries-mean.svg'), width = 20, height = 4)
+plot(plot_mean_timeseries_denoise(df2, c(1, 500, 2000, 20000)))
 dev.off()
 
 svg(paste0(OUTPATH, '/user_maxima.svg'))
 plot(plot_maxima_rank(best))
 dev.off()
 
-svg(paste0(OUTPATH, '/test.svg'))
-# revert order because fill=subject is an idiot who also does it
-levels(best$subject) <- sort(levels(best$subject))
-ggplot() +
-    geom_abline(slope = 0, intercept = 1/3, color='white') +
-    geom_flat_violin(aes(x=rep(-.25, nrow(nulls)), y=mean_accuracy, fill=subject),
-                     nulls, adjust = .5, trim = FALSE, color = NA, alpha = .5) +
-    geom_flat_violin(aes(x=rep(0, nrow(nulls)), y=mean_accuracy),
-                     nulls, adjust = 1, trim = FALSE, color = NA, alpha = 1) +
-    geom_boxplot(aes(x=rep(0, nrow(nulls)), y=mean_accuracy),
-                 nulls, outlier.shape=NA, alpha = .3, width = .01) +
-    geom_flat_violin(aes(x=rep(0, nrow(best)), y=mean_accuracy, fill=as.factor(680)),
-                     best, adjust = .2, trim = FALSE, color = NA, alpha = .5) +
-    geom_boxplot(aes(x=rep(0, nrow(best)), y=mean_accuracy),
-                 best, outlier.shape=NA, alpha = .3, width = .01) +
-    geom_jitter(aes(x=rep(-.25, nrow(best)),
-                    y=mean_accuracy, color=subject),
-                best, size = 2, alpha = .5, height = 0, width = .2) +
-    guides(colour = FALSE, fill = FALSE) +
-    scale_x_continuous(breaks = NULL) +
-    labs(x="", y="Classification accuracy") +
-    coord_flip()
+svg(paste0(OUTPATH, '/test.svg'), width = 10, height = 10)
+plot(plot_statistical_test(nulls, best))
 dev.off()
+
