@@ -5,6 +5,8 @@ library(ggplot2)
 library(dplyr)
 source("src/poststats/R_rainclouds.R")
 library(reshape2) # acast()
+library(plotly)
+library(parallel) # mclapply
 
 INPATH <- 'out/pymvpa/'
 OUTPATH <- 'out/poststats/'
@@ -29,7 +31,7 @@ plot_timeseries <- function(df) {
         scale_y_continuous(breaks = ybreaks, minor_breaks = NULL,
                            labels = ylabels) +
         theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
-        labs(x="Retraso estímulo-respuesta (ms)",
+        labs(x="Latencia estímulo-respuesta (ms)",
              y="Exactitud de clasificación") +
         guides(colour = FALSE)
 }
@@ -43,7 +45,7 @@ plot_timeseries_2 <- function(df2, order) {
         geom_tile(aes(fill = mean_accuracy)) +
         ## scale_x_discrete(breaks = as.character(xbreaks), labels = xlabels) +
         theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
-        labs(x = "Retraso estímulo-respuesta (ms)", y = "Sujeto") +
+        labs(x = "Latencia estímulo-respuesta (ms)", y = "Sujeto") +
         scale_fill_gradient2(name = "Exactitud de clasificación",
                              low = "red", mid = "white",
                              high = "blue", midpoint = mean(df2$mean_accuracy))
@@ -72,7 +74,7 @@ plot_mean_timeseries_denoise <- function(df, radii = 0) {
         scale_y_continuous(breaks = ybreaks, minor_breaks = NULL,
                            labels = ylabels) +
         theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
-        labs(x = "Retraso estímulo-respuesta (ms)",
+        labs(x = "Latencia estímulo-respuesta (ms)",
              y = "Exactitud de clasificación (media móvil)") +
         scale_color_gradient(trans = "log2") +
         scale_size_discrete(name = "Radio de suavización (ms)",
@@ -105,8 +107,8 @@ plot_maxima_rank <- function(best) {
                    aes(color = subject,
                        fill = factor(sample_size),
                        size = ocurrences,
-                       alpha = abs(mean(best$ms) - best$ms))) +
-        scale_alpha(name = "Separación a tiempo medio (ms)", range = c(1, .2)) +
+                       alpha = best$ms)) +
+        scale_alpha(name = "Latencia (ms)", range = c(1, .2)) +
         scale_fill_grey(name = "Muestras por clase", start = .8, end = .2) +
         scale_size(name = "Ocurrencias") +
         theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
@@ -146,6 +148,48 @@ plot_statistical_test <- function(nulls, best) {
         coord_flip()
 }
 
+p_values <- function(nulls, best, bonferroni) {
+    sapply(unique(best$subject), function(s) {
+        h0 <- nulls[nulls$subject == s, 'mean_accuracy']
+        p <- length(h0[h0 >= best[best$subject == s, 'mean_accuracy']]) /
+            length(h0)
+        names(p) <- s
+        return(p)
+    }) * bonferroni
+}
+
+plot_best_sampling <- function(sampling_periods,
+                               time_limits,
+                               p_instead_of_acc = FALSE) {
+	best_sampling <- matrix(ncol = length(time_limits),
+	                        nrow = length(sampling_periods))
+	best_sampling <- do.call(rbind, mclapply(sampling_periods, function(i) {
+	    sapply(time_limits, function(j) {
+	        df3 <- df2[df2$ms %% i == 0 & df2$ms <= j, ]
+    		if (p_instead_of_acc) {
+    	       mean(p_values(nulls, user_maxima(df3), length(unique(df3$ms))))
+    		} else {
+    			mean((user_maxima(df3))$mean_accuracy)
+    		}
+	    })
+	}, mc.cores = detectCores() - 1))
+	colnames(best_sampling) <- time_limits
+	rownames(best_sampling) <- 1000 / sampling_periods
+	
+	ztitle <- if (p_instead_of_acc) {
+                  "Valor p máximo medio (Bonferroni)"
+              } else {
+                  "Exactitud de clasificación máxima media"
+              }
+	plot_ly(x = as.numeric(colnames(best_sampling)),
+	        y = as.numeric(rownames(best_sampling)),
+	        z = best_sampling,
+	        type = "surface") %>%
+	    layout(scene = list(xaxis = list(title = "Límite de tiempo (ms)"),
+	                        yaxis = list(title = "Tasa de muestreo (Hz)"),
+	                        zaxis = list(title = ztitle)))
+}
+
 # dataset loading and preparation ##############################################
 
 time_series_files <- list.files(path = INPATH,
@@ -180,13 +224,6 @@ df2 <- df2[df2$subject %in% nulls$subject, ]
 best <- user_maxima(df2)
 nulls$subject <- factor(nulls$subject, levels = levels(best$subject))
 
-p_values <- sapply(unique(best$subject), function(s) {
-    h0 <- nulls[nulls$subject == s, 'mean_accuracy']
-    p <- length(h0[h0 >= best[best$subject == s, 'mean_accuracy']]) / length(h0)
-    names(p) <- s
-    return(p)
-})
-
 # plots ########################################################################
 
 svg(paste0(OUTPATH, '/timeseries.svg'), width = 20, height = 4)
@@ -204,7 +241,7 @@ df2_matrix <- acast(df2[, c("subject", "ms", "mean_accuracy")],
 df2_matrix <- as.data.frame(df2_matrix)
 subject_cluster <- hclust(dist(df2_matrix, method = "euclidean"),
                           method = "ward.D")
-order$cluster <- sort(as.character(best$subject))[subject_cluster$order]
+order$cluster <- sort(as.character(best$subject))[rev(subject_cluster$order)]
 for (i in c('best', 'first_max', 'cluster')) {
     svg(paste0(OUTPATH, '/timeseries2-', i, '.svg'), width = 20, height = 4)
     plot(plot_timeseries_2(df2, order[i][[1]]))
@@ -223,3 +260,8 @@ svg(paste0(OUTPATH, '/test.svg'), width = 10, height = 10)
 plot(plot_statistical_test(nulls, best))
 dev.off()
 
+sampling_periods <- seq(max(df2$ms) / TIME_STEP, 1) * TIME_STEP
+time_limits <- seq(200, 19800, TIME_STEP)
+
+plot_best_sampling(sampling_periods, time_limits, p_instead_of_acc = FALSE)
+plot_best_sampling(sampling_periods, time_limits, p_instead_of_acc = TRUE)
