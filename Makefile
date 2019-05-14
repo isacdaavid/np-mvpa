@@ -22,7 +22,7 @@ FEAT_NIFTIS = $(subst /resources/nifti.nii.gz,.feat, \
 
 .PHONY : build all
 all : build
-build : volbrain_tree volbrain_unzip pymvpa
+build : volbrain_tree volbrain_unzip eprime
 
 ################################################################################
 # poststats
@@ -254,6 +254,11 @@ eprime : $(IDS_FILE) $(DATA_DIR)/$@/
 # eprime event list -> pyMVPA sample attribute matrix
 	@find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \
 	    'awk -f "$(SRC_DIR)/eprime/eprime-to-csv.awk" -- "{}" > "{}.csv"' \;
+# now rewrite for borked eprime files (ID < 527) using alternative script
+	@find $$(ls $(BUILD_DIR)/$@ | \
+	     awk '{if ($$1<527) print "out/eprime/" $$1}') \
+	     -type f -name '*.txt' -exec bash -c \
+	    'awk -f "$(SRC_DIR)/eprime/borked-eprime-to-csv.awk" -- "{}" > "{}.csv"' \;
 
 ################################################################################
 # xnat's subject metadata DB: valid participants will be selected from there
