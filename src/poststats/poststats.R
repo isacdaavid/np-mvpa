@@ -154,20 +154,22 @@ p_values <- function(nulls, best, bonferroni) {
         p <- length(h0[h0 >= best[best$subject == s, 'mean_accuracy']]) /
             length(h0)
         names(p) <- s
-        return(p)
+        return(min(1 / bonferroni, p))
     }) * bonferroni
 }
 
-plot_best_sampling <- function(sampling_periods,
-                               time_limits,
-                               p_instead_of_acc = FALSE) {
+best_sampling <- function(sampling_periods,
+                          time_limits,
+                          p_instead_of_acc = FALSE) {
 	best_sampling <- matrix(ncol = length(time_limits),
 	                        nrow = length(sampling_periods))
 	best_sampling <- do.call(rbind, mclapply(sampling_periods, function(i) {
 	    sapply(time_limits, function(j) {
 	        df3 <- df2[df2$ms %% i == 0 & df2$ms <= j, ]
     		if (p_instead_of_acc) {
-    	       mean(p_values(nulls, user_maxima(df3), length(unique(df3$ms))))
+    	        mean(p_values(nulls,
+                              user_maxima(df3),
+                              length(unique(df3$ms))))
     		} else {
     			mean((user_maxima(df3))$mean_accuracy)
     		}
@@ -175,12 +177,10 @@ plot_best_sampling <- function(sampling_periods,
 	}, mc.cores = detectCores() - 1))
 	colnames(best_sampling) <- time_limits
 	rownames(best_sampling) <- 1000 / sampling_periods
-	
-	ztitle <- if (p_instead_of_acc) {
-                  "Valor p máximo medio (Bonferroni)"
-              } else {
-                  "Exactitud de clasificación máxima media"
-              }
+    return(best_sampling)
+}
+
+plot_best_sampling <- function(best_sampling, ztitle) {
 	plot_ly(x = as.numeric(colnames(best_sampling)),
 	        y = as.numeric(rownames(best_sampling)),
 	        z = best_sampling,
@@ -263,5 +263,34 @@ dev.off()
 sampling_periods <- seq(max(df2$ms) / TIME_STEP, 1) * TIME_STEP
 time_limits <- seq(200, 19800, TIME_STEP)
 
-plot_best_sampling(sampling_periods, time_limits, p_instead_of_acc = FALSE)
-plot_best_sampling(sampling_periods, time_limits, p_instead_of_acc = TRUE)
+acc <- best_sampling(sampling_periods, time_limits, p_instead_of_acc = FALSE)
+pval <- best_sampling(sampling_periods, time_limits, p_instead_of_acc = TRUE)
+plot_best_sampling(acc, "Exactitud de clasificación máxima media")
+plot_best_sampling(pval, "Valor p máximo medio (Bonferroni)")
+plot_best_sampling(acc / pval2, "Exactitud / valor p")
+
+
+sort(sapply(unique(df2$ms), function(t) {
+    d <- sum(abs(ref - df2[df2$ms == t, "mean_accuracy"]))
+    names(d) <- t
+    return(d)
+}))
+
+combinations <- combn(100, 3, simplify = FALSE)
+parejas <- sapply(combinations, function(comb) {
+    t1 <- df2$ms[comb[1]]
+    t2 <- df2$ms[comb[2]]
+    t3 <- df2$ms[comb[3]]
+    df3 <- df2[df2$ms == t1 | df2$ms == t2 | df2$ms == t3, ]
+    best <- user_maxima(df3)
+    res <- list()
+    res$mean_accuracy <- mean(best$mean_accuracy)
+    res$sd_accuracy <- sd(best$mean_accuracy)
+    res$mean_p <- mean(p_values(nulls, best, 3))
+    res$sd_p <- sd(p_values(nulls, best, 3))
+    names(res$mean_accuracy) <- paste0(t1, "_", t2, "_", t3)
+    names(res$sd_accuracy) <- paste0(t1, "_", t2, "_", t3)
+    names(res$mean_p) <- paste0(t1, "_", t2, "_", t3)
+    names(res$sd_p) <- paste0(t1, "_", t2, "_", t3)
+    return(res)
+})
