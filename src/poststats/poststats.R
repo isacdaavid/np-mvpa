@@ -2,6 +2,7 @@
 ## license: GPLv3 or later
 
 library(ggplot2)
+theme_set(theme_gray(base_size = 22))
 library(dplyr)
 source("src/poststats/R_rainclouds.R")
 library(reshape2) # acast()
@@ -103,13 +104,13 @@ plot_maxima_rank <- function(best) {
     ggplot(best, aes(x = subject, y = mean_accuracy)) +
         geom_line(aes(color = subject), show.legend = FALSE) +
         geom_point(#show.legend = FALSE,
-                   shape = 21, stroke = 1.5,
+                   shape = 21, stroke = 2.5,
                    aes(color = subject,
-                       fill = factor(sample_size),
+                       ## fill = factor(sample_size),
                        size = ocurrences,
                        alpha = best$ms)) +
         scale_alpha(name = "Latencia (ms)", range = c(1, .2)) +
-        scale_fill_grey(name = "Muestras por clase", start = .8, end = .2) +
+        ## scale_fill_grey(name = "Muestras por clase", start = .8, end = .2) +
         scale_size(name = "Ocurrencias") +
         theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
         labs(x = "Sujeto", y = "Exactitud de clasificación (maxima)") +
@@ -121,7 +122,6 @@ plot_maxima_rank <- function(best) {
 
 plot_statistical_test <- function(nulls, best) {
     ggplot() +
-        geom_abline(slope = 0, intercept = 1/3, color='white') +
         geom_flat_violin(aes(x = rep(-.25, nrow(nulls)), y = mean_accuracy,
                              group=subject, fill = subject), nulls,
                          adjust = .5, trim = FALSE, color = NA, alpha = .5) +
@@ -134,17 +134,17 @@ plot_statistical_test <- function(nulls, best) {
                          alpha = .3) +
         geom_boxplot(aes(x = rep(0, nrow(best)), y = mean_accuracy),
                      best, outlier.shape = NA, alpha = .3, width = .01) +
-        geom_point(aes(x = .0125 * as.numeric(subject) - .48,
-                       y = mean_accuracy, color=subject), best, size = 2) +
+        geom_point(aes(x = .0129 * as.numeric(subject) - .48,
+                       y = mean_accuracy, color = subject), best, size = 2) +
         scale_x_continuous(breaks = NULL) +
         scale_fill_discrete(name = "Sujeto") +
         scale_color_discrete(name = "Sujeto") +
-        labs(x="", y="Exactitud de clasificación (máxima)") +
+        labs(x = "", y = "Exactitud de clasificación (máxima)") +
         scale_y_continuous(breaks = c(seq(0, 1, .1), 1/3,
                                       mean(best$mean_accuracy)),
                            labels = c(seq(0, 1, .1), "azar", "media"),
                            minor_breaks = NULL) +
-        ## guides(colour = FALSE, fill = FALSE) +
+        # guides(colour = FALSE, fill = FALSE) +
         coord_flip()
 }
 
@@ -153,41 +153,60 @@ p_values <- function(nulls, best, bonferroni) {
         h0 <- nulls[nulls$subject == s, 'mean_accuracy']
         p <- length(h0[h0 >= best[best$subject == s, 'mean_accuracy']]) /
             length(h0)
+        p <- min(1 / bonferroni, p)
         names(p) <- s
-        return(min(1 / bonferroni, p))
+        return(p)
     }) * bonferroni
 }
 
-best_sampling <- function(sampling_periods,
+corrected_best <- function(nulls, best, bonferroni) {
+    sapply(unique(best$subject), function(s) {
+        h0 <- sort(nulls[nulls$subject == s, 'mean_accuracy'])
+        p <- bonferroni * 
+             (length(h0[h0 >= best[best$subject == s, 'mean_accuracy']]) /
+              length(h0))
+        p <- min(1, p)
+        new_acc <- if (p == 1) 0 else h0[length(h0) * (1 - p)]
+        names(new_acc) <- s
+        return(new_acc)
+    })
+}
+
+sapply(sort(p_values(nulls, best2, length(unique(df3$ms)))), function(p) {
+    
+})
+
+best_sampling <- function(df2,
+                          sampling_periods,
                           time_limits,
                           p_instead_of_acc = FALSE) {
-	best_sampling <- matrix(ncol = length(time_limits),
-	                        nrow = length(sampling_periods))
-	best_sampling <- do.call(rbind, mclapply(sampling_periods, function(i) {
-	    sapply(time_limits, function(j) {
-	        df3 <- df2[df2$ms %% i == 0 & df2$ms <= j, ]
-    		if (p_instead_of_acc) {
-    	        mean(p_values(nulls,
+    best_sampling <- matrix(ncol = length(time_limits),
+                            nrow = length(sampling_periods))
+    best_sampling <- do.call(rbind, mclapply(sampling_periods, function(i) {
+        sapply(time_limits, function(j) {
+            df3 <- df2[df2$ms %% i == 0 & df2$ms <= j, ]
+            if (p_instead_of_acc) {
+                mean(p_values(nulls,
                               user_maxima(df3),
                               length(unique(df3$ms))))
-    		} else {
-    			mean((user_maxima(df3))$mean_accuracy)
-    		}
-	    })
-	}, mc.cores = detectCores() - 1))
-	colnames(best_sampling) <- time_limits
-	rownames(best_sampling) <- 1000 / sampling_periods
+            } else {
+                mean((user_maxima(df3))$mean_accuracy)
+            }
+        })
+    }, mc.cores = detectCores() - 1))
+    colnames(best_sampling) <- time_limits
+    rownames(best_sampling) <- 1000 / sampling_periods
     return(best_sampling)
 }
 
 plot_best_sampling <- function(best_sampling, ztitle) {
-	plot_ly(x = as.numeric(colnames(best_sampling)),
-	        y = as.numeric(rownames(best_sampling)),
-	        z = best_sampling,
-	        type = "surface") %>%
-	    layout(scene = list(xaxis = list(title = "Límite de tiempo (ms)"),
-	                        yaxis = list(title = "Tasa de muestreo (Hz)"),
-	                        zaxis = list(title = ztitle)))
+    plot_ly(type = "surface",
+            x = as.numeric(colnames(best_sampling)),
+            y = as.numeric(rownames(best_sampling)),
+            z = best_sampling) %>%
+        layout(scene = list(xaxis = list(title = "Límite de tiempo (ms)"),
+                            yaxis = list(title = "Tasa de muestreo (Hz)"),
+                            zaxis = list(title = ztitle)))
 }
 
 # dataset loading and preparation ##############################################
@@ -216,7 +235,8 @@ nulls <- do.call(rbind, lapply(null_dist_files, function(file) {
 names(nulls) <- c("mean_accuracy", "subject")
 
 # subject ids <= 526 have missing events on eprime files. discard them
-df2 <- df[as.numeric(as.character(df$subject)) > 526, ]
+df2 <- df[as.numeric(as.character(df$subject)) > 526 &
+          df$sample_size == SAMPLE_SIZE, ]
 ## df2 <- df
 nulls <- nulls[nulls$subject %in% df2$subject, ]
 df2 <- df2[df2$subject %in% nulls$subject, ]
@@ -226,7 +246,7 @@ nulls$subject <- factor(nulls$subject, levels = levels(best$subject))
 
 # plots ########################################################################
 
-svg(paste0(OUTPATH, '/timeseries.svg'), width = 20, height = 4)
+svg(paste0(OUTPATH, '/timeseries.svg'), width = 20, height = 7)
 plot(plot_timeseries(df2))
 dev.off()
 
@@ -243,16 +263,19 @@ subject_cluster <- hclust(dist(df2_matrix, method = "euclidean"),
                           method = "ward.D")
 order$cluster <- sort(as.character(best$subject))[rev(subject_cluster$order)]
 for (i in c('best', 'first_max', 'cluster')) {
-    svg(paste0(OUTPATH, '/timeseries2-', i, '.svg'), width = 20, height = 4)
+    svg(paste0(OUTPATH, '/timeseries2-', i, '.svg'), width = 20, height = 7)
     plot(plot_timeseries_2(df2, order[i][[1]]))
     dev.off()
 }
+svg(paste0(OUTPATH, '/timeseries2-cluster-dendo.svg'))
+plot(subject_cluster, xlab = "Sujeto", ylab = "Distancia (Ward)")
+dev.off()
 
-svg(paste0(OUTPATH, '/timeseries-mean.svg'), width = 20, height = 4)
+svg(paste0(OUTPATH, '/timeseries-mean.svg'), width = 20, height = 7)
 plot(plot_mean_timeseries_denoise(df2, c(1, 500, 2000, 20000)))
 dev.off()
 
-svg(paste0(OUTPATH, '/user_maxima.svg'))
+svg(paste0(OUTPATH, '/user_maxima.svg'), width = 12, height = 10)
 plot(plot_maxima_rank(best))
 dev.off()
 
@@ -262,35 +285,35 @@ dev.off()
 
 sampling_periods <- seq(max(df2$ms) / TIME_STEP, 1) * TIME_STEP
 time_limits <- seq(200, 19800, TIME_STEP)
-
-acc <- best_sampling(sampling_periods, time_limits, p_instead_of_acc = FALSE)
-pval <- best_sampling(sampling_periods, time_limits, p_instead_of_acc = TRUE)
+acc <- best_sampling(df2, sampling_periods, time_limits,
+                     p_instead_of_acc = FALSE)
+pval <- best_sampling(df2, sampling_periods, time_limits,
+                      p_instead_of_acc = TRUE)
 plot_best_sampling(acc, "Exactitud de clasificación máxima media")
-plot_best_sampling(pval, "Valor p máximo medio (Bonferroni)")
-plot_best_sampling(acc / pval2, "Exactitud / valor p")
+plot_best_sampling(pval, "Valor p medio (Bonferroni)")
+plot_best_sampling(acc / pval, "Exactitud máxima media / valor p (Bonferroni)")
 
+## select samples with best corrected mean p-value
+df3 <- df2[df2$ms %% 1400 == 0 & df2$ms <= 18200, ]
+best2 <- user_maxima(df3)
 
-sort(sapply(unique(df2$ms), function(t) {
-    d <- sum(abs(ref - df2[df2$ms == t, "mean_accuracy"]))
-    names(d) <- t
-    return(d)
-}))
+svg(paste0(OUTPATH, '/user_maxima2.svg'), width = 12, height = 10)
+plot(plot_maxima_rank(best2))
+dev.off()
 
-combinations <- combn(100, 3, simplify = FALSE)
-parejas <- sapply(combinations, function(comb) {
-    t1 <- df2$ms[comb[1]]
-    t2 <- df2$ms[comb[2]]
-    t3 <- df2$ms[comb[3]]
-    df3 <- df2[df2$ms == t1 | df2$ms == t2 | df2$ms == t3, ]
-    best <- user_maxima(df3)
-    res <- list()
-    res$mean_accuracy <- mean(best$mean_accuracy)
-    res$sd_accuracy <- sd(best$mean_accuracy)
-    res$mean_p <- mean(p_values(nulls, best, 3))
-    res$sd_p <- sd(p_values(nulls, best, 3))
-    names(res$mean_accuracy) <- paste0(t1, "_", t2, "_", t3)
-    names(res$sd_accuracy) <- paste0(t1, "_", t2, "_", t3)
-    names(res$mean_p) <- paste0(t1, "_", t2, "_", t3)
-    names(res$sd_p) <- paste0(t1, "_", t2, "_", t3)
-    return(res)
-})
+svg(paste0(OUTPATH, '/test2.svg'), width = 10, height = 10)
+plot(plot_statistical_test(nulls, best2))
+dev.off()
+
+best3 <- best2
+best3$mean_accuracy <- corrected_best(nulls, best2, length(unique(df3$ms)))
+best3 <- best3[rev(order(best3$mean_accuracy)), ]
+best3$subject <- as.factor(best3$subject)
+svg(paste0(OUTPATH, '/test3.svg'), width = 10, height = 10)
+plot(plot_statistical_test(nulls, best3))
+dev.off()
+
+svg(paste0(OUTPATH, '/pvalues.svg'))
+plot(rev(sort(p_values(nulls, best2, length(unique(df3$ms))))), xlab = "Rango", ylab = "Valor p")
+abline(.05, 0)
+dev.off()

@@ -22,7 +22,7 @@ FEAT_NIFTIS = $(subst /resources/nifti.nii.gz,.feat, \
 
 .PHONY : build all
 all : build
-build : volbrain_tree volbrain_unzip eprime
+build : volbrain_tree volbrain_unzip poststats
 
 ################################################################################
 # poststats
@@ -65,7 +65,7 @@ $(BUILD_DIR)/pymvpa/% : $(DATA_DIR)/pymvpa/%
 	@echo "running pyMVPA for $<" ; \
 	mkdir -p "$@" ; \
 	python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$</events.csv" \
-	        "$</concat.nii.gz" "$@" > /dev/null 2>&1
+	        "$</concat.nii.gz" "$@" # > /dev/null 2>&1
 
 .PHONY : concatenate_runs
 concatenate_runs : $(addprefix $(DATA_DIR)/pymvpa/, $(IDS))
@@ -254,7 +254,7 @@ eprime : $(IDS_FILE) $(DATA_DIR)/$@/
 # eprime event list -> pyMVPA sample attribute matrix
 	@find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \
 	    'awk -f "$(SRC_DIR)/eprime/eprime-to-csv.awk" -- "{}" > "{}.csv"' \;
-# now rewrite for borked eprime files (ID < 527) using alternative script
+# now rewrite for bad eprime files (ID < 527) using an alternative script
 	@find $$(ls $(BUILD_DIR)/$@ | \
 	     awk '{if ($$1<527) print "out/eprime/" $$1}') \
 	     -type f -name '*.txt' -exec bash -c \

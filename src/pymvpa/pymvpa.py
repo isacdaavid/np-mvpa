@@ -18,7 +18,7 @@ STEP = 200 # time step between different HRF delays. ms
 TIME_START = 0 # first HRF delay to test for. ms
 TIME_LIMIT = 20000 # maximum HRF delay to test for. ms
 MAX_SAMPLES = 16 # samples per category = n-fold / 3
-PERMUTATIONS = 5000 # label permutations used to estimate null accuracy distrib
+PERMUTATIONS = 5 # label permutations used to estimate null accuracy distrib
 
 ################################################################################
 # volume labeling
@@ -114,7 +114,7 @@ def null_cv(permutations = PERMUTATIONS):
         cv_mc = CrossValidation(clf,
                                 partitioner,
                                 errorfx = lambda p, t: np.mean(p == t),
-			        postproc=mean_sample(),
+                                postproc=mean_sample(),
                                 null_dist = distr_est,
                                 enable_ca = ['stats'])
         return clf,cv_mc
@@ -139,13 +139,13 @@ def make_null_dist_plot(dist_samples, empirical):
 # - rescale to maximum weight (summed masks will be comparable operators)
 # - optionally, return n most significant weights
 def normalize_weights(weight_lists, significance = 1):
-	for i in range(0, len(weight_lists)):
-		weight_lists[i] = l2_normed(abs(weight_lists[i]))
-	if len(weight_lists) > 1:
-		total = np.sum(weight_lists, axis = 0)
-	else:
-		total = weight_lists[0]
-	total /= max(total)
+        for i in range(0, len(weight_lists)):
+                weight_lists[i] = l2_normed(abs(weight_lists[i]))
+        if len(weight_lists) > 1:
+                total = np.sum(weight_lists, axis = 0)
+        else:
+                total = weight_lists[0]
+        total /= max(total)
         ntile = np.sort(total)[-int(round(len(total) * significance))]
         return np.array([(0 if (x < ntile) else x) for x in total])
 
@@ -171,7 +171,7 @@ def sensibility_maps(model, ds):
                    i2 = i
 
         all_weights = normalize_weights(np.array([sens[0].samples[0],
-	                                          sens[1].samples[0],
+                                                  sens[1].samples[0],
                                                   sens[2].samples[0]]))
         emo_vs_neu = normalize_weights(np.array([sens[i1_1].samples[0],
                                                  sens[i1_2].samples[0]]))
@@ -204,7 +204,7 @@ for delay in range(TIME_START, TIME_LIMIT, STEP):
         result_dist.append(np.mean(results))
         sens = sensibility_maps_aux(model, ds4)
         weights = sens[0].samples[0] + sens[1].samples[0] + sens[2].samples[0]
-	print(np.mean(results))
+        print(np.mean(results))
         fo.writelines(str(ds4.nsamples / 3) + " " + str(np.mean(results)) + " "
                       + str(non_empty_weights_proportion(weights)) + "\n")
 
