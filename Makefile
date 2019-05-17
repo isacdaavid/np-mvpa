@@ -84,7 +84,7 @@ $(DATA_DIR)/pymvpa/% : $(DATA_DIR)/feat/%
 	        $${fmris[@]} > /dev/null 2>&1
 
 ################################################################################
-# post-FEAT brain extraction-related rules
+# post-FEAT gray matter extraction-related rules
 ################################################################################
 
 .PHONY : feat-brains
@@ -93,6 +93,9 @@ feat-brains : $(FEAT_NIFTIS:%=%/filtered_func_data_brain.nii.gz)
 
 %/filtered_func_data_brain.nii.gz : %/volbrain-mask.nii.gz %/filtered_func_data.nii.gz
 	@echo 'extracting EPI brain to $@'
+	@fslmaths "$<" -uthr 2 "$<"
+	@fslmaths "$<" -thr 2 "$<"
+	@fslmaths "$<" -div 2 "$<"
 	@fslmaths "$(subst _brain,,$@)" -mul "$<" "$@"
 
 %/filtered_func_data.nii.gz : % ;
@@ -106,7 +109,7 @@ feat-masks : $(FEAT_NIFTIS:%=%/volbrain-mask.nii.gz)
 %/volbrain-mask.nii.gz : %/reg/highres2example_func.mat %/example_func.nii.gz
 	@echo 'creating EPI mask $@'
 	@orig_mask_dir=$(subst feat,volbrain,$@) ; \
-	orig_mask=$$(find "$${orig_mask_dir/scans*/}" -name '*mask*') ; \
+	orig_mask=$$(find "$${orig_mask_dir/scans*/}" -name '*crisp*') ; \
 	flirt -interp nearestneighbour \
 	      -in "$$orig_mask" \
 	      -ref "$(subst volbrain-mask,example_func,$@)" \
