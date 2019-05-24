@@ -12,13 +12,15 @@ import sys
 # arguments passed to script
 ATTR_FNAME = sys.argv[1]
 BOLD_FNAME = sys.argv[2]
-OUTDIR = sys.argv[3]
+MASK_FNAME = sys.argv[3]
+OUTDIR = sys.argv[4]
 
 STEP = 200 # time step between different HRF delays. ms
 TIME_START = 0 # first HRF delay to test for. ms
 TIME_LIMIT = 20000 # maximum HRF delay to test for. ms
 MAX_SAMPLES = 16 # samples per category = n-fold / 3
-PERMUTATIONS = 5 # label permutations used to estimate null accuracy distrib
+PERMUTATIONS = 2 # label permutations used to estimate null accuracy distrib
+ANOVA_SELECTION = .01 # selected voxels proportion
 
 ################################################################################
 # volume labeling
@@ -88,10 +90,16 @@ def subsample(ds0):
 
 def train():
         clf = LinearCSVMC()
-        cv = CrossValidation(clf, NFoldPartitioner(attr = 'block'),
+	fsel = SensitivityBasedFeatureSelection(
+	       		OneWayAnova(),
+                        FractionTailSelector(ANOVA_SELECTION,
+					     mode = 'select',
+                                             tail = 'upper'))
+	fclf = FeatureSelectionClassifier(clf, fsel)
+        cv = CrossValidation(fclf, NFoldPartitioner(attr = 'block'),
                              errorfx = lambda p, t: np.mean(p == t),
                              enable_ca=['stats'])
-        return clf,cv
+        return fclf,cv
 
 ################################################################################
 # Monte-Carlo null hypothesis estimation
@@ -102,25 +110,31 @@ def null_cv(permutations = PERMUTATIONS):
         permutator = AttributePermutator('targets',
                                          limit={'partitions': 1}, count = 1)
         clf = LinearCSVMC()
+	fsel = SensitivityBasedFeatureSelection(
+	       		OneWayAnova(),
+                        FractionTailSelector(ANOVA_SELECTION,
+					     mode = 'select',
+                                             tail = 'upper'))
+	fclf = FeatureSelectionClassifier(clf, fsel)
         partitioner = NFoldPartitioner(attr = 'block')
-        cv = CrossValidation(clf,
+        cv = CrossValidation(fclf,
                              ChainNode([partitioner, permutator],
                                        space = partitioner.get_space()),
                              errorfx = lambda p, t: np.mean(p == t),
-                             postproc=mean_sample())
+                             postproc = mean_sample())
         distr_est = MCNullDist(repeater, tail = 'right',
                                measure = cv,
                                enable_ca = ['dist_samples'])
-        cv_mc = CrossValidation(clf,
+        cv_mc = CrossValidation(fclf,
                                 partitioner,
                                 errorfx = lambda p, t: np.mean(p == t),
-                                postproc=mean_sample(),
+                                postproc = mean_sample(),
                                 null_dist = distr_est,
                                 enable_ca = ['stats'])
-        return clf,cv_mc
+        return fclf,cv_mc
 
 def make_null_dist_plot(dist_samples, empirical):
-     pl.hist(dist_samples, bins=100, normed=True, alpha=0.8)
+     pl.hist(dist_samples, bins = 100, normed = True, alpha = 0.8)
      pl.axvline(empirical, color='red')
      # a priori chance-level
      pl.axvline(0.333, color='black', ls='--')
@@ -153,7 +167,7 @@ def sensibility_maps_aux(model, ds):
         analyzer = model.get_sensitivity_analyzer()
         return analyzer(ds)
 
-# outputs the computed "activation" maps (rather, sensibility maps)
+# outputs the computed "activation" maps (rather, sensitivity masks)
 def sensibility_maps(model, ds):
         sens = sensibility_maps_aux(model, ds)
         for i in range(0, len(sens.targets)):
@@ -196,7 +210,7 @@ attr = SampleAttributes(ATTR_FNAME,
 result_dist = []
 fo = open(OUTDIR + "/result-time-series.txt", "w+")
 for delay in range(TIME_START, TIME_LIMIT, STEP):
-        ds = fmri_dataset(BOLD_FNAME)
+        ds = fmri_dataset(BOLD_FNAME, mask = MASK_FNAME)
         ds3 = label(ds, attr, SLICE_TIMING_REFERENCE, delay)
         ds4 = subsample(ds3)
         model,validator = train()
@@ -220,7 +234,7 @@ plt.close()
 # best model ###################################################################
 
 optimal_delay = (result_dist.index(max(result_dist)) * STEP) + TIME_START
-ds = fmri_dataset(BOLD_FNAME)
+ds = fmri_dataset(BOLD_FNAME, mask = MASK_FNAME)
 ds3 = label(ds, attr, SLICE_TIMING_REFERENCE, optimal_delay)
 ds4 = subsample(ds3)
 # null accuracy estimation using Monte-Carlo method
@@ -236,7 +250,8 @@ plt.savefig(OUTDIR + '/conf-matrix.svg')
 plt.close()
 
 fo = open(OUTDIR + '/null-dist.txt', "w+")
-fo.writelines("\n".join(str(i) for i in validator.null_dist.ca.dist_samples.samples.tolist()[0][0]))
+fo.writelines("\n".join(str(i) \
+	for i in validator.null_dist.ca.dist_samples.samples.tolist()[0][0]))
 fo.close()
 
 make_null_dist_plot(np.ravel(validator.null_dist.ca.dist_samples),

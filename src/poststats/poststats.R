@@ -172,10 +172,6 @@ corrected_best <- function(nulls, best, bonferroni) {
     })
 }
 
-sapply(sort(p_values(nulls, best2, length(unique(df3$ms)))), function(p) {
-    
-})
-
 best_sampling <- function(df2,
                           sampling_periods,
                           time_limits,
