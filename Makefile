@@ -22,7 +22,7 @@ FEAT_NIFTIS = $(subst /resources/nifti.nii.gz,.feat, \
 
 .PHONY : build all
 all : build
-build : volbrain_tree volbrain_unzip poststats
+build : volbrain_tree volbrain_unzip pymvpa
 
 ################################################################################
 # poststats
@@ -65,7 +65,7 @@ $(BUILD_DIR)/pymvpa/% : $(DATA_DIR)/pymvpa/%
 	@echo "running pyMVPA for $<" ; \
 	mkdir -p "$@" ; \
 	mask=$$(find "$(subst pymvpa,feat,$<)" -name 'volbrain-mask.nii.gz' | head -n 1) ; \
-	python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$</events.csv" \
+	fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$</events.csv" \
 	        "$</concat.nii.gz" "$$mask" "$@" # > /dev/null 2>&1
 
 .PHONY : concatenate_runs
@@ -218,10 +218,10 @@ images : $(IDS_FILE)
 # eprime events: find files, clean and convert into design matrices
 ################################################################################
 
+# FIXME: is it feasible to write a generic per-file or per-subject rule?
 .PHONY : eprime
 eprime : $(IDS_FILE) $(DATA_DIR)/$@/
 	@printf 'building design matrices from eprime event lists\n\n'
-# FIXME: is it feasible to write a generic per-file or per-subject rule?
 	@rm -rf "$(BUILD_DIR)/$@"
 # copy eprime event files into subject-specific directory structure
 	@targets=($$(cut -d ' ' -f 1 "$<")) ; \

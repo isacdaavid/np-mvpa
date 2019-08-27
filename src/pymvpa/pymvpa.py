@@ -20,7 +20,7 @@ TIME_START = 0 # first HRF delay to test for. ms
 TIME_LIMIT = 20000 # maximum HRF delay to test for. ms
 MAX_SAMPLES = 16 # samples per category = n-fold / 3
 PERMUTATIONS = 2 # label permutations used to estimate null accuracy distrib
-ANOVA_SELECTION = .01 # selected voxels proportion
+ANOVA_SELECTION = .01 # proportion of voxels to work with
 
 ################################################################################
 # volume labeling

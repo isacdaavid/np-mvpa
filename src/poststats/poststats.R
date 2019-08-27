@@ -130,7 +130,7 @@ plot_statistical_test <- function(nulls, best) {
         geom_boxplot(aes( x = rep(0, nrow(nulls)), y = mean_accuracy),
                      nulls, outlier.shape = NA, alpha = .3, width = .01) +
         geom_flat_violin(aes(x = rep(0, nrow(best)), y = mean_accuracy), best,
-                         fill = 1, adjust = .2, trim = FALSE, color = NA,
+                         fill = 1, adjust = .1, trim = FALSE, color = NA,
                          alpha = .3) +
         geom_boxplot(aes(x = rep(0, nrow(best)), y = mean_accuracy),
                      best, outlier.shape = NA, alpha = .3, width = .01) +
@@ -144,7 +144,7 @@ plot_statistical_test <- function(nulls, best) {
                                       mean(best$mean_accuracy)),
                            labels = c(seq(0, 1, .1), "azar", "media"),
                            minor_breaks = NULL) +
-        # guides(colour = FALSE, fill = FALSE) +
+        guides(colour = FALSE, fill = FALSE) +
         coord_flip()
 }
 
@@ -290,7 +290,7 @@ plot_best_sampling(pval, "Valor p medio (Bonferroni)")
 plot_best_sampling(acc / pval, "Exactitud máxima media / valor p (Bonferroni)")
 
 ## select samples with best corrected mean p-value
-df3 <- df2[df2$ms %% 1400 == 0 & df2$ms <= 18200, ]
+df3 <- df2 # [df2$ms == 5200, ]
 best2 <- user_maxima(df3)
 
 svg(paste0(OUTPATH, '/user_maxima2.svg'), width = 12, height = 10)
@@ -313,3 +313,4 @@ svg(paste0(OUTPATH, '/pvalues.svg'))
 plot(rev(sort(p_values(nulls, best2, length(unique(df3$ms))))), xlab = "Rango", ylab = "Valor p")
 abline(.05, 0)
 dev.off()
+
