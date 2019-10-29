@@ -1,0 +1,23 @@
+#!/usr/bin/python2
+
+# author: Isaac David <isacdaavid@at@isacdaavid@dot@info>
+# license: GPLv3 or later
+
+from mvpa2.tutorial_suite import *
+import sys
+
+datasets = []
+for filename in sys.argv[2:]:
+	datasets.append(fmri_dataset(filename))
+
+merged = vstack(datasets, a = 'drop_nonunique')
+merged.a.mapper = datasets[0].a.mapper
+merged.a.voxel_eldim = datasets[0].a.voxel_eldim
+merged.a.voxel_dim = datasets[0].a.voxel_dim
+merged.a.imghdr = datasets[0].a.imghdr
+merged.a.imgtype = datasets[0].a.imgtype
+merged.a.imghdr = datasets[0].a.imghdr
+
+nimg = map2nifti(merged, merged)
+nimg.to_filename(sys.argv[1])
+

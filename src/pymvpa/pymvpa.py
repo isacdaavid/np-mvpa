@@ -4,23 +4,35 @@
 # license: GPLv3 or later
 
 import matplotlib
-matplotlib.use('Agg') # Force matplotlib to not use any Xwindows backend
+matplotlib.use('Agg') # force matplotlib not to use any Xwindows backend
 import matplotlib.pyplot as plt
-from mvpa2.tutorial_suite import *
+from mvpa2.suite import *
 import sys
 
 # arguments passed to script
-ATTR_FNAME = sys.argv[1]
-BOLD_FNAME = sys.argv[2]
-MASK_FNAME = sys.argv[3]
-OUTDIR = sys.argv[4]
+ATTR_FNAME = sys.argv[1] # 'data/psychopy/events.csv'
+BOLD_FNAME = sys.argv[2] # 'data/pymvpa/2/concat.nii.gz'
+MASK_FNAME = sys.argv[3] # 'data/feat/2/scans/5-tr_FMRI_1.feat/volbrain-mask.nii.gz'
+OUTDIR = sys.argv[4] # 'out/pymvpa/2/'
+REDUCED_BOLD_FNAME = sys.argv[5] # 'data/pymvpa/2/means.csv'
 
-STEP = 200 # time step between different HRF delays. ms
-TIME_START = 0 # first HRF delay to test for. ms
-TIME_LIMIT = 20000 # maximum HRF delay to test for. ms
-MAX_SAMPLES = 16 # samples per category = n-fold / 3
-PERMUTATIONS = 2 # label permutations used to estimate null accuracy distrib
-ANOVA_SELECTION = .01 # proportion of voxels to work with
+STEP = 500 # time step between different HRF delays (ms)
+TIME_START = 0 # first HRF delay to test for (ms)
+TIME_LIMIT = 10000 # maximum HRF delay to test for (ms)
+PERMUTATIONS = 50 # label permutations used to estimate null accuracy distrib
+ANOVA_SELECTION = 1 # proportion of voxels to work with
+
+CLASSES = ['blank', 'scrambled']
+# CLASSES = ['scrambled', 'neutral']
+# CLASSES = ['neutral', 'happy', 'sad', 'angry']
+
+# separate hyperplanes responsible from making an 'emotional vs neutral'
+# distinction from an 'emotion1 vs emotion2 ...' one
+NEUTRAL = True if 'happy' in CLASSES else False
+
+# WARNING: assigning an existing pyMVPA Dataset object (or one of its attributes)
+#          to a new variable/attribute is a call by reference. for actual copies
+#          you must use ds.copy(deep=True, ...)
 
 ################################################################################
 # volume labeling
@@ -29,7 +41,7 @@ ANOVA_SELECTION = .01 # proportion of voxels to work with
 SLICE_TIMING_REFERENCE = +1000 # ms
 
 def label(ds, attr, slice_timing_reference, hrf_delay):
-        # time-shift for eprime preambulus
+        # correct for preambulus time-shift, start onset_times count at 0
         onset_times = np.array(attr.onset_time) - attr.onset_time[0]
         attr.pop('onset_time')
         attr['onset_time'] = np.ndarray.tolist(onset_times)
@@ -39,7 +51,7 @@ def label(ds, attr, slice_timing_reference, hrf_delay):
         ds.sa.time_coords = (ds.sa.time_coords * 1000) + slice_timing_reference
 
         indices = list()
-        # exclude volumes prior to 1 hrf_delay, since they are not supposed to
+        # exclude volumes prior to 1 hrf_delay, since they are not supposed
         # to reflect a maximum of task-related HRF activity
         for vol_time in ds[ds.sa.time_coords >= hrf_delay].sa.time_coords:
                 # select latest event to occur before (vol_time - hrf_delay)
@@ -65,37 +77,18 @@ def label(ds, attr, slice_timing_reference, hrf_delay):
 ################################################################################
 
 def subsample(ds0):
-        ds1 = ds0[{'emotion': ['happy', 'neutral', 'sad']}]
-        # sample from independent blocks, so as to avoid temporally-correlated
-        # volumes in both training and test partitions. take earliest volume
-        indep = []
-        for b in np.unique(ds1.sa.block):
-                indep.append(min(ds1[{'block': [b]}].sa.time_indices))
-        ds2 = ds1[{'time_indices': indep}]
-
-        # good machines are emotionally-balanced machines ;)
-        max_samples = min(np.unique(ds2[{'emotion': ['happy',
-                                                     'sad',
-                                                     'neutral']}].sa.emotion,
-                                    return_counts = True)[1])
-
-        if max_samples > MAX_SAMPLES:
-                max_samples = MAX_SAMPLES
-        ds3 = ds2[{'emotion': ['happy']}][:max_samples:1]
-        ds3 = vstack((ds3, ds2[{'emotion': ['sad']}][:max_samples:1]))
-        ds3 = vstack((ds3, ds2[{'emotion': ['neutral']}][:max_samples:1]))
-
-        ds3.sa['targets'] = ds3.sa.emotion # this is the label/target attribute
-        return ds3
+        ds1 = ds0[{'emotion': CLASSES}]
+        ds1.sa['targets'] = ds1.sa.emotion # this is the label/target attribute
+        return ds1
 
 def train():
         clf = LinearCSVMC()
-	fsel = SensitivityBasedFeatureSelection(
-	       		OneWayAnova(),
+        fsel = SensitivityBasedFeatureSelection(
+                        OneWayAnova(),
                         FractionTailSelector(ANOVA_SELECTION,
-					     mode = 'select',
+                                             mode = 'select',
                                              tail = 'upper'))
-	fclf = FeatureSelectionClassifier(clf, fsel)
+        fclf = FeatureSelectionClassifier(clf, fsel)
         cv = CrossValidation(fclf, NFoldPartitioner(attr = 'block'),
                              errorfx = lambda p, t: np.mean(p == t),
                              enable_ca=['stats'])
@@ -110,12 +103,12 @@ def null_cv(permutations = PERMUTATIONS):
         permutator = AttributePermutator('targets',
                                          limit={'partitions': 1}, count = 1)
         clf = LinearCSVMC()
-	fsel = SensitivityBasedFeatureSelection(
-	       		OneWayAnova(),
+        fsel = SensitivityBasedFeatureSelection(
+                        OneWayAnova(),
                         FractionTailSelector(ANOVA_SELECTION,
-					     mode = 'select',
+                                             mode = 'select',
                                              tail = 'upper'))
-	fclf = FeatureSelectionClassifier(clf, fsel)
+        fclf = FeatureSelectionClassifier(clf, fsel)
         partitioner = NFoldPartitioner(attr = 'block')
         cv = CrossValidation(fclf,
                              ChainNode([partitioner, permutator],
@@ -133,11 +126,11 @@ def null_cv(permutations = PERMUTATIONS):
                                 enable_ca = ['stats'])
         return fclf,cv_mc
 
-def make_null_dist_plot(dist_samples, empirical):
+def make_null_dist_plot(dist_samples, empirical, nclasses):
      pl.hist(dist_samples, bins = 100, normed = True, alpha = 0.8)
      pl.axvline(empirical, color='red')
      # a priori chance-level
-     pl.axvline(0.333, color='black', ls='--')
+     pl.axvline(1.0 / nclasses, color='black', ls='--')
      # scale x-axis to full range of possible error values
      pl.xlim(0,1)
      pl.xlabel('Average cross-validated classification error')
@@ -170,28 +163,19 @@ def sensibility_maps_aux(model, ds):
 # outputs the computed "activation" maps (rather, sensitivity masks)
 def sensibility_maps(model, ds):
         sens = sensibility_maps_aux(model, ds)
+        neu,emo = list(),list()
         for i in range(0, len(sens.targets)):
-                sensmap = sens.targets[i]
-                # emotional vs neutral
-                if str(sensmap) == "('neutral', 'happy')" or \
-                   str(sensmap) == "('happy', 'neutral')":
-                   i1_1 = i
-                if str(sensmap) == "('neutral', 'sad')" or \
-                   str(sensmap) == "('sad', 'neutral')":
-                   i1_2 = i
-                # happy vs sad
-                if str(sensmap) == "('happy', 'sad')" or \
-                   str(sensmap) == "('sad', 'happy')":
-                   i2 = i
-
-        all_weights = normalize_weights(np.array([sens[0].samples[0],
-                                                  sens[1].samples[0],
-                                                  sens[2].samples[0]]))
-        emo_vs_neu = normalize_weights(np.array([sens[i1_1].samples[0],
-                                                 sens[i1_2].samples[0]]))
-        hap_vs_sad = normalize_weights(np.array([sens[i2].samples[0]]))
-
-        return all_weights,emo_vs_neu,hap_vs_sad
+                if NEUTRAL and "'neutral'" in str(sens.targets[i]):
+                        neu.append(i)
+                else:
+                        emo.append(i)
+        # aggregate and normalize hyperplane weights found at .samples[0]
+        allw = normalize_weights(np.array([sens[x].samples[0] for x in neu + emo]))
+	emow = normalize_weights(np.array([sens[x].samples[0] for x in emo]))
+        if NEUTRAL:
+                neuw = normalize_weights(np.array([sens[x].samples[0] for x in neu]))
+		return allw,neuw,emow
+        return allw,emow
 
 # percentage of voxels with non-zero weights
 def non_empty_weights_proportion(weights):
@@ -201,26 +185,32 @@ def non_empty_weights_proportion(weights):
 # main
 ################################################################################
 
-# load eprime events/design matrix (aka target attributes)
+# load psychopy events/design matrix (aka target attributes)
 attr = SampleAttributes(ATTR_FNAME,
-                        header = ['onset_time', 'age', 'sex', 'handedness',
-                                  'block', 'visual', 'face', 'face_gender',
-                                  'emotion', 'gaze', 'target', 'response'])
+                        header = ['onset_time', 'emotion', 'block'])
 
 result_dist = []
 fo = open(OUTDIR + "/result-time-series.txt", "w+")
+
 for delay in range(TIME_START, TIME_LIMIT, STEP):
-        ds = fmri_dataset(BOLD_FNAME, mask = MASK_FNAME)
-        ds3 = label(ds, attr, SLICE_TIMING_REFERENCE, delay)
-        ds4 = subsample(ds3)
+	orig = fmri_dataset(BOLD_FNAME, mask = MASK_FNAME)
+	ds = orig
+	if REDUCED_BOLD_FNAME != BOLD_FNAME :
+		# load low-dimensional version of dataset
+		ds = Dataset(np.genfromtxt(REDUCED_BOLD_FNAME, delimiter=' '))
+		ds.sa = orig.sa
+        ds2 = label(ds, attr, SLICE_TIMING_REFERENCE, delay)
+        ds3 = subsample(ds2)
         model,validator = train()
-        results = validator(ds4)
+        results = validator(ds3)
         result_dist.append(np.mean(results))
-        sens = sensibility_maps_aux(model, ds4)
-        weights = sens[0].samples[0] + sens[1].samples[0] + sens[2].samples[0]
+	if NEUTRAL:
+		all_weights,emo_vs_neu,hap_vs_sad = sensibility_maps(model, ds3)
+	else:
+		all_weights,hap_vs_sad = sensibility_maps(model, ds3)
         print(np.mean(results))
-        fo.writelines(str(ds4.nsamples / 3) + " " + str(np.mean(results)) + " "
-                      + str(non_empty_weights_proportion(weights)) + "\n")
+        fo.writelines(str(ds3.nsamples / len(CLASSES)) + " " + str(np.mean(results)) + " " +
+                      str(non_empty_weights_proportion(all_weights)) + "\n")
 
 fo.close()
 
@@ -234,12 +224,17 @@ plt.close()
 # best model ###################################################################
 
 optimal_delay = (result_dist.index(max(result_dist)) * STEP) + TIME_START
-ds = fmri_dataset(BOLD_FNAME, mask = MASK_FNAME)
-ds3 = label(ds, attr, SLICE_TIMING_REFERENCE, optimal_delay)
-ds4 = subsample(ds3)
+orig = fmri_dataset(BOLD_FNAME, mask = MASK_FNAME)
+ds = orig
+if REDUCED_BOLD_FNAME != BOLD_FNAME :
+	# load low-dimensional version of dataset
+	ds = Dataset(np.genfromtxt(REDUCED_BOLD_FNAME, delimiter=' '))
+	ds.sa = orig.sa
+ds2 = label(ds, attr, SLICE_TIMING_REFERENCE, optimal_delay)
+ds3 = subsample(ds2)
 # null accuracy estimation using Monte-Carlo method
 model,validator = null_cv(PERMUTATIONS)
-results = validator(ds4)
+results = validator(ds3)
 
 fo = open(OUTDIR + "/conf-matrix.txt", "w+")
 fo.writelines(validator.ca.stats.as_string(description = True))
@@ -251,28 +246,39 @@ plt.close()
 
 fo = open(OUTDIR + '/null-dist.txt', "w+")
 fo.writelines("\n".join(str(i) \
-	for i in validator.null_dist.ca.dist_samples.samples.tolist()[0][0]))
+        for i in validator.null_dist.ca.dist_samples.samples.tolist()[0][0]))
 fo.close()
 
 make_null_dist_plot(np.ravel(validator.null_dist.ca.dist_samples),
-                    np.mean(results))
+                    np.mean(results),
+                    len(CLASSES))
 plt.savefig(OUTDIR + '/null-dist.svg')
 plt.close()
 
 # sensibility maps #############################################################
 
-all_weights,emo_vs_neu,hap_vs_sad = sensibility_maps(model, ds4)
+if NEUTRAL:
+	all_weights,emo_vs_neu,hap_vs_sad = sensibility_maps(model, ds3)
+else:
+	all_weights,hap_vs_sad = sensibility_maps(model, ds3)
 
 # distribution of non-zero weights, normalized to the maximum one
 plt.hist(all_weights[all_weights != 0] / max(all_weights), bins=50)
 plt.savefig(OUTDIR + '/weights-dist.svg')
 plt.close()
 
+#parcellation = fmri_dataset('data/AAL3_BOLD.nii.gz')
+#parcellation.samples = parcellation.samples.astype(float)
+#for i in range(0, len(all_weights)):
+#	parcellation.samples[parcellation.samples == i + 1] = all_weights[i]
+#nimg = map2nifti(parcellation)
+#nimg.to_filename(OUTDIR + '/all-weights.nii.gz')
+
 # export sensitivity maps
 nimg = map2nifti(ds, all_weights) # use ds.a.mapper to reverse flattening
-nimg.to_filename(OUTDIR + '/all-weights-nn.nii.gz')
-nimg = map2nifti(ds, emo_vs_neu)
-nimg.to_filename(OUTDIR + '/emo-vs-neu-weights-nn.nii.gz')
+nimg.to_filename(OUTDIR + '/all-weights.nii.gz')
 nimg = map2nifti(ds, hap_vs_sad)
-nimg.to_filename(OUTDIR + '/hap_vs_sad-weights-nn.nii.gz')
-
+nimg.to_filename(OUTDIR + '/hap_vs_sad-weights.nii.gz')
+if NEUTRAL:
+	nimg = map2nifti(ds, emo_vs_neu)
+	nimg.to_filename(OUTDIR + '/emo-vs-neu-weights-nn.nii.gz')

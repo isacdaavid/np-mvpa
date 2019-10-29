@@ -25,7 +25,7 @@ for filename in sys.argv[2:]:
 	datasets.append(prepro(fmri_dataset(filename)))
 
 merged = vstack(datasets, a = 'drop_nonunique')
-merged.a.mapper = datasets[0].a.mapper[0]
+merged.a.mapper = datasets[0].a.mapper
 merged.a.voxel_eldim = datasets[0].a.voxel_eldim
 merged.a.voxel_dim = datasets[0].a.voxel_dim
 merged.a.imghdr = datasets[0].a.imghdr

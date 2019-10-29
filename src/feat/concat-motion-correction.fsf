@@ -13,8 +13,11 @@ set fmri(level) 1
 # Which stages to run
 # 0 : No first-level analysis (registration and/or group stats only)
 # 7 : Full first-level analysis
-# 1 : Pre-processing
-# 2 : Statistics
+# 1 : Pre-Stats
+# 3 : Pre-Stats + Stats
+# 2 :             Stats
+# 6 :             Stats + Post-stats
+# 4 :                     Post-stats
 set fmri(analysis) 1
 
 # Use relative filenames
@@ -36,7 +39,7 @@ set fmri(outputdir) "MVPA_OUTPUTDIR"
 set fmri(tr) 2.000000
 
 # Total volumes
-set fmri(npts) 185
+set fmri(npts) 925
 
 # Delete volumes
 set fmri(ndelete) 0
@@ -66,6 +69,11 @@ set fmri(noise) 0.66
 
 # Noise AR(1)
 set fmri(noisear) 0.34
+
+# Post-stats-only directory copying
+# 0 : Overwrite original post-stats results
+# 1 : Copy original FEAT directory for new Contrasts, Thresholding, Rendering
+set fmri(newdir_yn) 0
 
 # Motion correction
 # 0 : None
@@ -97,7 +105,7 @@ set fmri(unwarp_dir) y-
 # 3 : Use slice order file
 # 4 : Use slice timings file
 # 5 : Interleaved (0, 2, 4 ... 1, 3, 5 ... )
-set fmri(st) 5
+set fmri(st) 0
 
 # Slice timings file
 set fmri(st_file) ""
@@ -115,7 +123,7 @@ set fmri(norm_yn) 0
 set fmri(perfsub_yn) 0
 
 # Highpass temporal filtering
-set fmri(temphp_yn) 1
+set fmri(temphp_yn) 0
 
 # Lowpass temporal filtering
 set fmri(templp_yn) 0
@@ -207,6 +215,9 @@ set fmri(bgimage) 1
 
 # Create time series plots
 set fmri(tsplot_yn) 1
+
+# Registration?
+set fmri(reg_yn) 1
 
 # Registration to initial structural
 set fmri(reginitial_highres_yn) 0

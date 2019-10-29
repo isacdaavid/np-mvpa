@@ -7,93 +7,76 @@ BUILD_DIR := out
 SRC_DIR := src
 DATA_DIR := data
 
-IDS_FILE := $(BUILD_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
+.PHONY : build all
+all : build
+build : concatenate_runs
+
+IDS_FILE := $(DATA_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
 # note the use of the lazy assignment operator (strict evaluation) to avoid
 # memoization of IDS after $(IDS_FILE) is regenerated
 IDS = $(shell cut -d ' ' -f 1 $(IDS_FILE) | sort)
 DICOMS = $(shell find $(DATA_DIR)/xnat/images/ -type d -name DICOM | \
-                 grep -E '(fMRI_GazeCueing|FSPGR|T2)' | grep -v '00-PU' | sort)
+                 grep -E '(FMRI|RestState|T1|T2)' | sort)
 VOLBRAIN_ZIPS = $(shell find $(DATA_DIR)/volbrain/ -type f -name '*.zip')
-VOLBRAIN_IMAGES = $(shell find data/volbrain/ -type f -name 'native_n_*')
+VOLBRAIN_IMAGES = $(shell find data/volbrain/ -type f -name 'n_mmni*')
 FMRI_NIFTIS = $(shell find $(DATA_DIR)/xnat/images/ -type f \
-                      -name '*nifti.nii.gz' | grep GazeCueing | sort)
+                      -name '*nifti.nii.gz' | grep 'tr_FMRI' | sort)
 FEAT_NIFTIS = $(subst /resources/nifti.nii.gz,.feat, \
                       $(subst xnat/images,feat,$(FMRI_NIFTIS)))
-
-.PHONY : build all
-all : build
-build : volbrain_tree volbrain_unzip pymvpa
+FEAT_CONCAT = $(shell find $(DATA_DIR)/pymvpa -type d -name 'mc.feat')
 
 ################################################################################
-# poststats
+# transform back to T1w space
 ################################################################################
 
-.PHONY : poststats
-poststats : # pymvpa
-	@echo 'running result statistics'
-	@Rscript -e 'source("$(SRC_DIR)/poststats/poststats.R")'
+.PHONY : register_results
+register_results : $(addsuffix /all-weights-T1.nii.gz,  $(addprefix $(BUILD_DIR)/pymvpa/, $(IDS)))
+
+%-weights-T1.nii.gz : %-weights.nii.gz
+	@echo 'transforming $< to T1w space'
+	@id=$(subst $(BUILD_DIR)/pymvpa/,,$<) ; \
+	id=$${id%/*} ; \
+	t1=$$(find "$(DATA_DIR)/volbrain/$$id" -name '*_brain.nii.gz') ; \
+	mat=$$(find "$(DATA_DIR)/pymvpa/$$id" -name '*func2highres.mat' | head -n1) ; \
+	flirt -interp trilinear \
+	      -in "$<" \
+	      -ref "$$t1" \
+	      -applyxfm \
+	      -init "$$mat" \
+	      -out "$@"
 
 ################################################################################
 # pyMVPA rules
 ################################################################################
 
-#.PHONY : pymvpa
-#pymvpa : $(subst data,out,$(FEAT_NIFTIS:%=%/hap_vs_sad-weights-nn.nii.gz)) ;
-
-# FIXME: missing RHS
-%/hap_vs_sad-weights-nn.nii.gz :
-	@outdir=$(subst hap_vs_sad-weights-nn.nii.gz,,$@) ; \
-	nifti=$@ ; \
-	nifti=$${nifti/out/data} ; \
-	nifti=$${nifti/hap_vs_sad-weights-nn.nii.gz/filtered_func_data_brain.nii.gz} ; \
-	eprime=$$outdir ; eprime=$${eprime/feat/eprime} ; eprime=$${eprime/scans*_/} ; \
-	eprime=$$(echo "$$eprime" | sed -E 's!(1|2|3)(rep)?.feat/!\1.txt.csv!') ; \
-	if [[ -e "$$eprime" ]]; then \
-	    echo "running pyMVPA for $$outdir" ; \
-	    mkdir -p "$$outdir" ; \
-	    if [ $$((RANDOM % 2)) -eq 0 ]; then \
-	        fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$$eprime" "$$nifti" "$$outdir" > /dev/null 2>&1 ; \
-	    else \
-	        python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$$eprime" "$$nifti" "$$outdir" > /dev/null 2>&1 ; \
-	    fi ; \
-	fi
-
 .PHONY : pymvpa
 pymvpa : $(addprefix $(BUILD_DIR)/pymvpa/, $(IDS))
 
-$(BUILD_DIR)/pymvpa/% : $(DATA_DIR)/pymvpa/%
-	@echo "running pyMVPA for $<" ; \
-	mkdir -p "$@" ; \
-	mask=$$(find "$(subst pymvpa,feat,$<)" -name 'volbrain-mask.nii.gz' | head -n 1) ; \
-	fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$</events.csv" \
-	        "$</concat.nii.gz" "$$mask" "$@" # > /dev/null 2>&1
+$(BUILD_DIR)/pymvpa/% : $(DATA_DIR)/pymvpa/%/mc.feat/filtered_func_data_norm_brain.nii.gz
+	@echo "running pyMVPA for $<"
+	@mkdir -p "$@" ; \
+	mask=$$(find "$(subst $(BUILD_DIR),$(DATA_DIR),$@)" -name 'volbrain-mask.nii.gz' | head -n 1) ; \
+	id=$@ ; id=$${id##*/} ; \
+	python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" \
+	        "$<" "$$mask" "$@" "$<" # > /dev/null 2>&1
 
-.PHONY : concatenate_runs
-concatenate_runs : $(addprefix $(DATA_DIR)/pymvpa/, $(IDS))
-	@echo
+#.PHONY : detrend_normalize
+#detrend_normalize : $(FEAT_CONCAT:%=%/filtered_func_data_brain_norm.nii.gz)
 
-$(DATA_DIR)/pymvpa/% : $(DATA_DIR)/feat/%
-	@mkdir -p "$@"
-	@echo 'concatenating runs to $@'
-	@events=($$(find "$(subst $(DATA_DIR)/feat,$(BUILD_DIR)/eprime,$<)" \
-	                 -type f -name '*.csv' | sort)) ; \
-	fmris=($$(find "$<" -type f -name 'filtered_func_data_brain.nii.gz' | \
-	          sed 's/GazeCueing_/ /' | sort -k 2 | sed 's/ /GazeCueing_/')) ; \
-	python2 "$(SRC_DIR)/pymvpa/concatenate-events.py" "$@/events.csv" \
-	        $${events[@]} > /dev/null 2>&1 & \
-	python2 "$(SRC_DIR)/pymvpa/prepro.py" "$@/concat.nii.gz" \
-	        $${fmris[@]} > /dev/null 2>&1
+#$(DATA_DIR)/pymvpa/%/mc.feat/filtered_func_data_brain_norm.nii.gz : $(DATA_DIR)/pymvpa/%/mc.feat/filtered_func_data_brain.nii.gz
+#	@echo 'Detrending and normalizing into $@'
+#	@python2 "$(SRC_DIR)/pymvpa/detrend_normalize.py" "$@" "$<" > /dev/null 2>&1
 
 ################################################################################
 # post-FEAT gray matter extraction-related rules
 ################################################################################
 
-.PHONY : feat-brains
-feat-brains : $(FEAT_NIFTIS:%=%/filtered_func_data_brain.nii.gz)
+.PHONY : feat_brains
+feat_brains : $(FEAT_CONCAT:%=%/filtered_func_data_norm_brain.nii.gz)
 	@echo
 
-%/filtered_func_data_brain.nii.gz : %/volbrain-mask.nii.gz %/filtered_func_data.nii.gz
-	@echo 'extracting EPI brain to $@'
+%/filtered_func_data_norm_brain.nii.gz : %/volbrain-mask.nii.gz %/filtered_func_data_norm.nii.gz
+	@echo 'extracting BOLD 4D brain to $@'
 	@fslmaths "$<" -uthr 2 "$<"
 	@fslmaths "$<" -thr 2 "$<"
 	@fslmaths "$<" -div 2 "$<"
@@ -101,16 +84,16 @@ feat-brains : $(FEAT_NIFTIS:%=%/filtered_func_data_brain.nii.gz)
 
 %/filtered_func_data.nii.gz : % ;
 
-.PHONY : feat-masks
-feat-masks : $(FEAT_NIFTIS:%=%/volbrain-mask.nii.gz)
+.PHONY : feat_masks
+feat_masks : $(FEAT_CONCAT:%=%/volbrain-mask.nii.gz)
 	@echo
 
 #TODO: add prerequisite to _brain.nii.gz images, so as to complete dependency graph.
 #      deduplicate per-scan masks, since they are all the same for a given subj.
 %/volbrain-mask.nii.gz : %/reg/highres2example_func.mat %/example_func.nii.gz
-	@echo 'creating EPI mask $@'
-	@orig_mask_dir=$(subst feat,volbrain,$@) ; \
-	orig_mask=$$(find "$${orig_mask_dir/scans*/}" -name '*crisp*') ; \
+	@echo 'creating BOLD mask $@'
+	@orig_mask_dir=$(subst mc.feat/volbrain-mask.nii.gz,,$(subst pymvpa,volbrain,$@)) ; \
+	orig_mask=$$(find "$$orig_mask_dir" -name '*crisp*') ; \
 	flirt -interp nearestneighbour \
 	      -in "$$orig_mask" \
 	      -ref "$(subst volbrain-mask,example_func,$@)" \
@@ -126,9 +109,52 @@ feat-masks : $(FEAT_NIFTIS:%=%/volbrain-mask.nii.gz)
 # FSL FEAT preprocessing
 ################################################################################
 
-.PHONY : feat-prepro
+.PHONY : apply_motion_correction
+apply_motion_correction : $(FEAT_CONCAT:%=%/filtered_func_data_norm.nii.gz)
+
+$(DATA_DIR)/pymvpa/%/mc.feat/filtered_func_data_norm.nii.gz : $(DATA_DIR)/pymvpa/%/concat-norm.nii.gz
+	@echo "applying motion correction into $@"
+	@matdir=$@ ; matdir=$${matdir%/*}/mc/prefiltered_func_data_mcf.mat ; \
+	applyxfm4D "$<" "$<" "$@" "$$matdir" -fourdigit
+
+.PHONY : concatenate_detrend_norm
+concatenate_detrend_norm : $(addsuffix /concat-norm.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
+	@echo
+
+$(DATA_DIR)/pymvpa/%/concat-norm.nii.gz : $(DATA_DIR)/feat/%
+	@echo 'detrending, normalizing and concatenating runs into $@'
+	@dir=$@ ; mkdir -p "$${dir%/*}" ; \
+	fmris=($$(find "$<" -type f -name 'filtered_func_data.nii.gz' | \
+	          sort --version-sort)) ; \
+	python2 "$(SRC_DIR)/pymvpa/concatenate-detrend-norm.py" "$@" \
+	        $${fmris[@]} > /dev/null 2>&1
+
+.PHONY : concat_motion_correction
+concat_motion_correction : $(addsuffix //mc.feat/filtered_func_data.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
+
+$(DATA_DIR)/pymvpa/%/mc.feat/filtered_func_data.nii.gz : $(DATA_DIR)/pymvpa/%
+	@echo "MCFlirt'ing into $@"
+	@t1dir=$(subst pymvpa,volbrain,$<) ; \
+	t1=$$(find "$$t1dir" -name '*_brain.nii.gz') ; \
+	sed "s|MVPA_OUTPUTDIR|$$(pwd)/$</mc| ; s|MVPA_FEAT_FILES|$$(pwd)/$</concat.nii.gz| ; s|MVPA_HIGHRES_FILES|$$(pwd)/$$t1|" \
+	    "$(SRC_DIR)/feat/concat-motion-correction.fsf" > "$</concat-motion-correction.fsf" ; \
+	feat "$</concat-motion-correction.fsf" ; sleep 5m
+
+.PHONY : concatenate
+concatenate : $(addsuffix /concat.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
+	@echo
+
+$(DATA_DIR)/pymvpa/%/concat.nii.gz : $(DATA_DIR)/feat/%
+	@echo 'concatenating runs into $@'
+	@dir=$@ ; mkdir -p "$${dir%/*}" ; \
+	fmris=($$(find "$<" -type f -name 'filtered_func_data.nii.gz' | \
+	          sort --version-sort)) ; \
+	python2 "$(SRC_DIR)/pymvpa/concatenate.py" "$@" \
+	        $${fmris[@]} > /dev/null 2>&1
+
+.PHONY : feat_prepro
 #TODO: add prerequisite to _brain.nii.gz images, so as to complete dependency graph
-feat-prepro : $(addsuffix .feat,$(subst /resources/nifti.nii.gz,,$(subst xnat/images,feat,$(FMRI_NIFTIS))))
+feat_prepro : $(addsuffix .feat,$(subst /resources/nifti.nii.gz,,$(subst xnat/images,feat,$(FMRI_NIFTIS))))
 	@echo
 
 $(DATA_DIR)/feat/%.feat : $(DATA_DIR)/xnat/images/%/resources/nifti.nii.gz $(SRC_DIR)/feat/design.fsf
@@ -151,7 +177,7 @@ t1w_brain_extraction : $(VOLBRAIN_IMAGES:.nii=_brain.nii.gz)
 
 $(DATA_DIR)/volbrain/%_brain.nii.gz : $(DATA_DIR)/volbrain/%.nii
 	@echo 'extracting brain to $@'
-	@fslmaths $< -mul "$(subst _n_,_mask_n_,$<)" "$@"
+	@fslmaths $< -mul "$(subst n_,mask_n_,$<)" "$@"
 
 .PHONY : volbrain_unzip
 volbrain_unzip : $(VOLBRAIN_ZIPS:.zip=.volbrain)
@@ -194,7 +220,7 @@ images : $(IDS_FILE)
 	for i in $${targets[@]}; do \
 	    [[ -d "$(DATA_DIR)/xnat/$@/$$i" ]] && continue ; \
 	    if [[ ! -f "$(DATA_DIR)/xnat/$@/$${i}.zip" ]]; then \
-	        printf 'downloading DICOMS for subject %d\n\n' "$$i" ; \
+	        printf 'downloading DICOMs for subject %d\n\n' "$$i" ; \
 	        $(SRC_DIR)/xnat/$@/xnat-download.sh $$(grep "^$$i " $<) \
 	                                            "$(DATA_DIR)/xnat/$@" || \
 	            rm "$(DATA_DIR)/xnat/$@/$${i}.zip" ; \
@@ -203,72 +229,4 @@ images : $(IDS_FILE)
 	    unzip -q "$(DATA_DIR)/xnat/$@/$${i}.zip" \
 	          -d "$(DATA_DIR)/xnat/$@/" && rm "$(DATA_DIR)/xnat/$@/$${i}.zip" ; \
 	done ;
-# delete duplicate T1 directories. we'll do smoothing and normalisation manually
-	@find "$(DATA_DIR)/xnat/$@/" -type d -name '*00-PU*' -prune \
-	         -exec bash -c 'echo "deleting derived images" {} ; rm -r {}' \;
-# delete fMRI sequences with missing volumes (<260)
-	@rm -rf "$(DATA_DIR)/xnat/$@/517/scans/5-fMRI_GazeCueing_1"
-# TODO: rescue vols, unique sequence
-	@rm -rf "$(DATA_DIR)/xnat/$@/812/scans/8-fMRI_GazeCueing_2"
-	@echo
-# delete fMRI sequences without corresponding emprime events file
-	@rm -rf "$(DATA_DIR)/xnat/$@/535/scans/6-fMRI_GazeCueing_3"
 
-################################################################################
-# eprime events: find files, clean and convert into design matrices
-################################################################################
-
-# FIXME: is it feasible to write a generic per-file or per-subject rule?
-.PHONY : eprime
-eprime : $(IDS_FILE) $(DATA_DIR)/$@/
-	@printf 'building design matrices from eprime event lists\n\n'
-	@rm -rf "$(BUILD_DIR)/$@"
-# copy eprime event files into subject-specific directory structure
-	@targets=($$(cut -d ' ' -f 1 "$<")) ; \
-	for i in $${targets[@]}; do \
-	    mkdir -p "$(BUILD_DIR)/$@/$${i}" ; \
-	    find $(DATA_DIR)/$@/{victor,FEDERICA/TASK_Gaze\ Cueing} \
-	         -type f -name "*$${i}*.txt" \
-	         -exec cp {} "$(BUILD_DIR)/$@/$${i}" \; ; \
-	done
-# manually fix duplicates and repeats
-	@rm $(BUILD_DIR)/$@/526/*RTs* \
-	    $(BUILD_DIR)/$@/677/Gaze* \
-	    "$(BUILD_DIR)/$@/682/Gaze Cueing_B Backup1 Backup1-682-1.txt" \
-	    $(BUILD_DIR)/$@/678/{'Gaze Cueing_B Backup1-678-1.txt','Copia de Gaze Cueing_C Backup1-678-1.txt'} \
-	    # $(BUILD_DIR)/$@/678/'Copia de Copia de Gaze Cueing_A Backup1 Backup1-678-1.txt'
-	@mv $(BUILD_DIR)/$@/664/Copia\ de\ Gaze\ Cueing_{C,B}\ Backup1-664-1.txt
-# homogenize disparate file names into {1,2,3}.txt
-	@find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \
-	    'mv "{}" $$(echo {} | sed -En "s/(.*)(\/)(.*)(_)(A|B|C)(.*)(.txt)/\1\2\5\7/ ; s/A/1/p ; s/B/2/p ; s/C/3/p")' \;
-# UTF-16 -> UTF-8, CRLF -> LF
-	@find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \
-	    'iconv -f UTF-16 -t UTF-8 "{}" | tr -d "\r" > "{}.new" && mv "{}.new" "{}"' \;
-# more manual fixes (file contents)
-	@sed -i 's/Sex: male/Sex: female/' $(BUILD_DIR)/$@/559/3.txt
-	@sed -i 's/Age: 0/Age: 35/' $(BUILD_DIR)/$@/575/3.txt
-	@sed -i 's/Age: 22/Age: 23/' $(BUILD_DIR)/$@/590/{2,3}.txt
-	@sed -i 's/Age: 0/Age: 31/' $(BUILD_DIR)/$@/672/{1,2}.txt
-	@sed -i 's/Sex: male/Sex: female/' $(BUILD_DIR)/$@/678/2.txt
-	@sed -i 's/Age: 23/Age: 22/' $(BUILD_DIR)/$@/678/3.txt
-	@sed -i 's/Age: 28/Age: 27/' $(BUILD_DIR)/$@/696/3.txt
-# delete files without corresponding fMRI sequence
-	@rm $(BUILD_DIR)/$@/518/{1,2}.txt
-	@rm $(BUILD_DIR)/$@/812/2.txt
-# eprime event list -> pyMVPA sample attribute matrix
-	@find $(BUILD_DIR)/$@ -type f -name '*.txt' -exec bash -c \
-	    'awk -f "$(SRC_DIR)/eprime/eprime-to-csv.awk" -- "{}" > "{}.csv"' \;
-# now rewrite for bad eprime files (ID < 527) using an alternative script
-	@find $$(ls $(BUILD_DIR)/$@ | \
-	     awk '{if ($$1<527) print "out/eprime/" $$1}') \
-	     -type f -name '*.txt' -exec bash -c \
-	    'awk -f "$(SRC_DIR)/eprime/borked-eprime-to-csv.awk" -- "{}" > "{}.csv"' \;
-
-################################################################################
-# xnat's subject metadata DB: valid participants will be selected from there
-################################################################################
-
-$(IDS_FILE) : $(SRC_DIR)/xnat/subject_metadata/extract.R
-	@printf '\building subject IDs list\n\n'
-	@mkdir -p "$(BUILD_DIR)/xnat/subject_metadata"
-	Rscript -e 'source("$(SRC_DIR)/xnat/subject_metadata/extract.R")'
