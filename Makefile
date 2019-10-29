@@ -19,11 +19,6 @@ DICOMS = $(shell find $(DATA_DIR)/xnat/images/ -type d -name DICOM | \
                  grep -E '(FMRI|RestState|T1|T2)' | sort)
 VOLBRAIN_ZIPS = $(shell find $(DATA_DIR)/volbrain/ -type f -name '*.zip')
 VOLBRAIN_IMAGES = $(shell find data/volbrain/ -type f -name 'n_mmni*')
-FMRI_NIFTIS = $(shell find $(DATA_DIR)/xnat/images/ -type f \
-                      -name '*nifti.nii.gz' | grep 'tr_FMRI' | sort)
-FEAT_NIFTIS = $(subst /resources/nifti.nii.gz,.feat, \
-                      $(subst xnat/images,feat,$(FMRI_NIFTIS)))
-FEAT_CONCAT = $(shell find $(DATA_DIR)/pymvpa -type d -name 'mc.feat')
 
 ################################################################################
 # transform back to T1w space
@@ -37,7 +32,7 @@ register_results : $(addsuffix /all-weights-T1.nii.gz,  $(addprefix $(BUILD_DIR)
 	@id=$(subst $(BUILD_DIR)/pymvpa/,,$<) ; \
 	id=$${id%/*} ; \
 	t1=$$(find "$(DATA_DIR)/volbrain/$$id" -name '*_brain.nii.gz') ; \
-	mat=$$(find "$(DATA_DIR)/pymvpa/$$id" -name '*func2highres.mat' | head -n1) ; \
+	mat=$$(find "$(DATA_DIR)/feat/$$id" -name '*func2highres.mat' | head -n1) ; \
 	flirt -interp trilinear \
 	      -in "$<" \
 	      -ref "$$t1" \
@@ -52,53 +47,47 @@ register_results : $(addsuffix /all-weights-T1.nii.gz,  $(addprefix $(BUILD_DIR)
 .PHONY : pymvpa
 pymvpa : $(addprefix $(BUILD_DIR)/pymvpa/, $(IDS))
 
-$(BUILD_DIR)/pymvpa/% : $(DATA_DIR)/pymvpa/%/mc.feat/filtered_func_data_norm_brain.nii.gz
+$(BUILD_DIR)/pymvpa/% : $(DATA_DIR)/pymvpa/%/concat-norm-brain.nii.gz
 	@echo "running pyMVPA for $<"
 	@mkdir -p "$@" ; \
-	mask=$$(find "$(subst $(BUILD_DIR),$(DATA_DIR),$@)" -name 'volbrain-mask.nii.gz' | head -n 1) ; \
+	mask=$$(find "$(subst $(BUILD_DIR)/pymvpa,$(DATA_DIR)/feat,$@)" -name 'volbrain-mask.tmp.nii.gz' | head -n 1) ; \
 	id=$@ ; id=$${id##*/} ; \
 	python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" \
 	        "$<" "$$mask" "$@" "$<" # > /dev/null 2>&1
-
-#.PHONY : detrend_normalize
-#detrend_normalize : $(FEAT_CONCAT:%=%/filtered_func_data_brain_norm.nii.gz)
-
-#$(DATA_DIR)/pymvpa/%/mc.feat/filtered_func_data_brain_norm.nii.gz : $(DATA_DIR)/pymvpa/%/mc.feat/filtered_func_data_brain.nii.gz
-#	@echo 'Detrending and normalizing into $@'
-#	@python2 "$(SRC_DIR)/pymvpa/detrend_normalize.py" "$@" "$<" > /dev/null 2>&1
 
 ################################################################################
 # post-FEAT gray matter extraction-related rules
 ################################################################################
 
 .PHONY : feat_brains
-feat_brains : $(FEAT_CONCAT:%=%/filtered_func_data_norm_brain.nii.gz)
+feat_brains : $(addsuffix /concat-norm-brain.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
 	@echo
 
-%/filtered_func_data_norm_brain.nii.gz : %/volbrain-mask.nii.gz %/filtered_func_data_norm.nii.gz
+# TODO: missing dependency on mask
+%/concat-norm-brain.nii.gz : %/concat-norm.nii.gz
 	@echo 'extracting BOLD 4D brain to $@'
-	@fslmaths "$<" -uthr 2 "$<"
-	@fslmaths "$<" -thr 2 "$<"
-	@fslmaths "$<" -div 2 "$<"
-	@fslmaths "$(subst _brain,,$@)" -mul "$<" "$@"
+	@mask=$(subst concat-norm-brain.nii.gz,volbrain-mask,$(subst pymvpa,feat,$@)) ; \
+	fslmaths "$${mask}.nii.gz" -uthr 2 "$${mask}.tmp.nii.gz" ; \
+	fslmaths "$${mask}.tmp.nii.gz" -thr 2 "$${mask}.tmp.nii.gz" ; \
+	fslmaths "$${mask}.tmp.nii.gz" -div 2 "$${mask}.tmp.nii.gz" ; \
+	fslmaths "$<" -mul "$${mask}.tmp.nii.gz" "$@"
 
 %/filtered_func_data.nii.gz : % ;
 
 .PHONY : feat_masks
-feat_masks : $(FEAT_CONCAT:%=%/volbrain-mask.nii.gz)
+feat_masks : $(addsuffix /volbrain-mask.nii.gz, $(addprefix $(DATA_DIR)/feat/, $(IDS)))
 	@echo
 
 #TODO: add prerequisite to _brain.nii.gz images, so as to complete dependency graph.
-#      deduplicate per-scan masks, since they are all the same for a given subj.
-%/volbrain-mask.nii.gz : %/reg/highres2example_func.mat %/example_func.nii.gz
+%/volbrain-mask.nii.gz : %/feat.feat/reg/highres2example_func.mat %/feat.feat/example_func.nii.gz
 	@echo 'creating BOLD mask $@'
-	@orig_mask_dir=$(subst mc.feat/volbrain-mask.nii.gz,,$(subst pymvpa,volbrain,$@)) ; \
+	@orig_mask_dir=$(subst volbrain-mask.nii.gz,,$(subst feat,volbrain,$@)) ; \
 	orig_mask=$$(find "$$orig_mask_dir" -name '*crisp*') ; \
 	flirt -interp nearestneighbour \
 	      -in "$$orig_mask" \
-	      -ref "$(subst volbrain-mask,example_func,$@)" \
+	      -ref "$(subst volbrain-mask,feat.feat/example_func,$@)" \
 	      -applyxfm \
-	      -init "$(subst volbrain-mask.nii.gz,reg/highres2example_func.mat,$@)" \
+	      -init "$(subst volbrain-mask.nii.gz,feat.feat/reg/highres2example_func.mat,$@)" \
 	      -out "$@"
 
 %/reg/highres2example_func.mat : % ;
@@ -109,63 +98,37 @@ feat_masks : $(FEAT_CONCAT:%=%/volbrain-mask.nii.gz)
 # FSL FEAT preprocessing
 ################################################################################
 
-.PHONY : apply_motion_correction
-apply_motion_correction : $(FEAT_CONCAT:%=%/filtered_func_data_norm.nii.gz)
-
-$(DATA_DIR)/pymvpa/%/mc.feat/filtered_func_data_norm.nii.gz : $(DATA_DIR)/pymvpa/%/concat-norm.nii.gz
-	@echo "applying motion correction into $@"
-	@matdir=$@ ; matdir=$${matdir%/*}/mc/prefiltered_func_data_mcf.mat ; \
-	applyxfm4D "$<" "$<" "$@" "$$matdir" -fourdigit
-
-.PHONY : concatenate_detrend_norm
-concatenate_detrend_norm : $(addsuffix /concat-norm.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
+.PHONY : detrend_normalize
+detrend_normalize : $(addsuffix /concat-norm.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
 	@echo
 
-$(DATA_DIR)/pymvpa/%/concat-norm.nii.gz : $(DATA_DIR)/feat/%
-	@echo 'detrending, normalizing and concatenating runs into $@'
-	@dir=$@ ; mkdir -p "$${dir%/*}" ; \
-	fmris=($$(find "$<" -type f -name 'filtered_func_data.nii.gz' | \
-	          sort --version-sort)) ; \
-	python2 "$(SRC_DIR)/pymvpa/concatenate-detrend-norm.py" "$@" \
-	        $${fmris[@]} > /dev/null 2>&1
+$(DATA_DIR)/pymvpa/%/concat-norm.nii.gz : $(DATA_DIR)/feat/%/feat.feat
+	@echo 'detrending and normalizing into $@'
+	@python2 "$(SRC_DIR)/pymvpa/detrend-normalize.py" "$@" "$</filtered_func_data.nii.gz"  > /dev/null 2>&1
 
-.PHONY : concat_motion_correction
-concat_motion_correction : $(addsuffix //mc.feat/filtered_func_data.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
+.PHONY : feat_prepro
+feat_prepro : $(addsuffix //feat.feat/filtered_func_data.nii.gz, $(addprefix $(DATA_DIR)/feat/, $(IDS)))
+	@echo
 
-$(DATA_DIR)/pymvpa/%/mc.feat/filtered_func_data.nii.gz : $(DATA_DIR)/pymvpa/%
-	@echo "MCFlirt'ing into $@"
-	@t1dir=$(subst pymvpa,volbrain,$<) ; \
+$(DATA_DIR)/feat/%/feat.feat : $(DATA_DIR)/pymvpa/%
+	@echo "FEAT preprocessing into $@"
+	@featdir=$(subst pymvpa,feat,$<) ; mkdir -p "$$featdir" ; \
+	t1dir=$(subst pymvpa,volbrain,$<) ; \
 	t1=$$(find "$$t1dir" -name '*_brain.nii.gz') ; \
-	sed "s|MVPA_OUTPUTDIR|$$(pwd)/$</mc| ; s|MVPA_FEAT_FILES|$$(pwd)/$</concat.nii.gz| ; s|MVPA_HIGHRES_FILES|$$(pwd)/$$t1|" \
-	    "$(SRC_DIR)/feat/concat-motion-correction.fsf" > "$</concat-motion-correction.fsf" ; \
-	feat "$</concat-motion-correction.fsf" ; sleep 5m
+	nvols=$$(fslnvols "$</concat.nii.gz") ; \
+	sed "s|MVPA_OUTPUTDIR|$$(pwd)/$${featdir}/feat| ; s|MVPA_FEAT_FILES|$$(pwd)/$</concat.nii.gz| ; s|MVPA_HIGHRES_FILES|$$(pwd)/$${t1}| ; s|MVPA_NVOLS|$$nvols|" \
+	    "$(SRC_DIR)/feat/design.fsf" > "$${featdir}/design.fsf" ; \
+	feat "$${featdir}/design.fsf"
 
 .PHONY : concatenate
 concatenate : $(addsuffix /concat.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
 	@echo
 
-$(DATA_DIR)/pymvpa/%/concat.nii.gz : $(DATA_DIR)/feat/%
+$(DATA_DIR)/pymvpa/%/concat.nii.gz : $(DATA_DIR)/xnat/images/%
 	@echo 'concatenating runs into $@'
 	@dir=$@ ; mkdir -p "$${dir%/*}" ; \
-	fmris=($$(find "$<" -type f -name 'filtered_func_data.nii.gz' | \
-	          sort --version-sort)) ; \
-	python2 "$(SRC_DIR)/pymvpa/concatenate.py" "$@" \
-	        $${fmris[@]} > /dev/null 2>&1
-
-.PHONY : feat_prepro
-#TODO: add prerequisite to _brain.nii.gz images, so as to complete dependency graph
-feat_prepro : $(addsuffix .feat,$(subst /resources/nifti.nii.gz,,$(subst xnat/images,feat,$(FMRI_NIFTIS))))
-	@echo
-
-$(DATA_DIR)/feat/%.feat : $(DATA_DIR)/xnat/images/%/resources/nifti.nii.gz $(SRC_DIR)/feat/design.fsf
-	@echo 'FEAT preprocessing at $@'
-	@t1dir=$(subst feat,volbrain,$@) ; \
-	t1dir=$${t1dir%scans*} ; \
-	t1=$$(find "$$t1dir" -name '*_brain.nii.gz') ; \
-	featdir=$@ ; mkdir -p "$${featdir%/*}" ; \
-	sed "s|MVPA_OUTPUTDIR|$$(pwd)/$@| ; s|MVPA_FEAT_FILES|$$(pwd)/$<| ; s|MVPA_HIGHRES_FILES|$$(pwd)/$$t1|" \
-	    "$(SRC_DIR)/feat/design.fsf" > "$@.design.fsf" ; \
-	feat "$@.design.fsf" ; sleep 5m
+	fmris=($$(find "$<" -type f -name '*nifti.nii.gz' | grep 'tr_FMRI' | sort --version-sort)) ; \
+	python2 "$(SRC_DIR)/pymvpa/concatenate.py" "$@" $${fmris[@]} > /dev/null 2>&1
 
 ################################################################################
 # volbrain-related rules

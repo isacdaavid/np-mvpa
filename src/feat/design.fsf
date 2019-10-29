@@ -36,7 +36,7 @@ set fmri(outputdir) "MVPA_OUTPUTDIR"
 set fmri(tr) 2.000000
 
 # Total volumes
-set fmri(npts) 185
+set fmri(npts) "MVPA_NVOLS"
 
 # Delete volumes
 set fmri(ndelete) 0
