@@ -130,6 +130,7 @@ $(DATA_DIR)/pymvpa/%/concat.nii.gz : $(DATA_DIR)/xnat/images/%
 	@dir=$@ ; mkdir -p "$${dir%/*}" ; \
 	fmris=($$(find "$<" -type f -name '*nifti.nii.gz' | grep 'tr_FMRI' | sort --version-sort)) ; \
 	python2 "$(SRC_DIR)/pymvpa/concatenate.py" "$@" $${fmris[@]} > /dev/null 2>&1
+	@fsledithd "$@" "$(SRC_DIR)/fix-nifti-units.sh"
 
 ################################################################################
 # volbrain-related rules
