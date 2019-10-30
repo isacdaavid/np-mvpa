@@ -47,26 +47,34 @@ register_results : $(addsuffix /all-weights-T1.nii.gz,  $(addprefix $(BUILD_DIR)
 .PHONY : pymvpa
 pymvpa : $(addprefix $(BUILD_DIR)/pymvpa/, $(IDS))
 
-$(BUILD_DIR)/pymvpa/% : $(DATA_DIR)/pymvpa/%/concat-norm-brain.nii.gz
+$(BUILD_DIR)/pymvpa/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
 	@echo "running pyMVPA for $<"
 	@mkdir -p "$@" ; \
-	mask=$$(find "$(subst $(BUILD_DIR)/pymvpa,$(DATA_DIR)/feat,$@)" -name 'volbrain-mask.tmp.nii.gz' | head -n 1) ; \
+	mask=$$(find "$(subst $(BUILD_DIR)/pymvpa,$(DATA_DIR)/feat,$@)" -name 'volbrain-mask.tmp.nii.gz') ; \
 	id=$@ ; id=$${id##*/} ; \
 	python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" \
 	        "$<" "$$mask" "$@" "$<" # > /dev/null 2>&1
+
+.PHONY : detrend_normalize
+detrend_normalize : $(addsuffix /concat-brain-norm.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
+	@echo
+
+%/concat-brain-norm.nii.gz : %/concat-brain.nii.gz
+	@echo 'detrending and normalizing into $@'
+	@python2 "$(SRC_DIR)/pymvpa/detrend-normalize.py" "$@" "$<"  > /dev/null 2>&1
 
 ################################################################################
 # post-FEAT gray matter extraction-related rules
 ################################################################################
 
 .PHONY : feat_brains
-feat_brains : $(addsuffix /concat-norm-brain.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
+feat_brains : $(addsuffix /concat-brain.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
 	@echo
 
-# TODO: missing dependency on mask
-%/concat-norm-brain.nii.gz : %/concat-norm.nii.gz
+# TODO: missing explicit dependency on mask
+$(DATA_DIR)/pymvpa/%/concat-brain.nii.gz : $(DATA_DIR)/feat/%/feat.feat/filtered_func_data.nii.gz
 	@echo 'extracting BOLD 4D brain to $@'
-	@mask=$(subst concat-norm-brain.nii.gz,volbrain-mask,$(subst pymvpa,feat,$@)) ; \
+	@mask=$(subst concat-brain.nii.gz,volbrain-mask,$(subst pymvpa,feat,$@)) ; \
 	fslmaths "$${mask}.nii.gz" -uthr 2 "$${mask}.tmp.nii.gz" ; \
 	fslmaths "$${mask}.tmp.nii.gz" -thr 2 "$${mask}.tmp.nii.gz" ; \
 	fslmaths "$${mask}.tmp.nii.gz" -div 2 "$${mask}.tmp.nii.gz" ; \
@@ -87,7 +95,7 @@ feat_masks : $(addsuffix /volbrain-mask.nii.gz, $(addprefix $(DATA_DIR)/feat/, $
 	      -in "$$orig_mask" \
 	      -ref "$(subst volbrain-mask,feat.feat/example_func,$@)" \
 	      -applyxfm \
-	      -init "$(subst volbrain-mask.nii.gz,feat.feat/reg/highres2example_func.mat,$@)" \
+	      -init "$<" \
 	      -out "$@"
 
 %/reg/highres2example_func.mat : % ;
@@ -98,18 +106,11 @@ feat_masks : $(addsuffix /volbrain-mask.nii.gz, $(addprefix $(DATA_DIR)/feat/, $
 # FSL FEAT preprocessing
 ################################################################################
 
-.PHONY : detrend_normalize
-detrend_normalize : $(addsuffix /concat-norm.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
-	@echo
-
-$(DATA_DIR)/pymvpa/%/concat-norm.nii.gz : $(DATA_DIR)/feat/%/feat.feat
-	@echo 'detrending and normalizing into $@'
-	@python2 "$(SRC_DIR)/pymvpa/detrend-normalize.py" "$@" "$</filtered_func_data.nii.gz"  > /dev/null 2>&1
-
 .PHONY : feat_prepro
-feat_prepro : $(addsuffix //feat.feat/filtered_func_data.nii.gz, $(addprefix $(DATA_DIR)/feat/, $(IDS)))
+feat_prepro : $(addsuffix //feat.feat, $(addprefix $(DATA_DIR)/feat/, $(IDS)))
 	@echo
 
+# FIXME: fix dependency to be on pymvpa/concat.nii.gz, not just pymvpa/
 $(DATA_DIR)/feat/%/feat.feat : $(DATA_DIR)/pymvpa/%
 	@echo "FEAT preprocessing into $@"
 	@featdir=$(subst pymvpa,feat,$<) ; mkdir -p "$$featdir" ; \
