@@ -80,7 +80,7 @@ $(DATA_DIR)/pymvpa/%/concat-brain.nii.gz : $(DATA_DIR)/feat/%/feat.feat/filtered
 	fslmaths "$${mask}.tmp.nii.gz" -div 2 "$${mask}.tmp.nii.gz" ; \
 	fslmaths "$<" -mul "$${mask}.tmp.nii.gz" "$@"
 
-%/filtered_func_data.nii.gz : % ;
+# %/filtered_func_data.nii.gz : % ;
 
 .PHONY : feat_masks
 feat_masks : $(addsuffix /volbrain-mask.nii.gz, $(addprefix $(DATA_DIR)/feat/, $(IDS)))
@@ -193,4 +193,3 @@ images : $(IDS_FILE)
 	    unzip -q "$(DATA_DIR)/xnat/$@/$${i}.zip" \
 	          -d "$(DATA_DIR)/xnat/$@/" && rm "$(DATA_DIR)/xnat/$@/$${i}.zip" ; \
 	done ;
-

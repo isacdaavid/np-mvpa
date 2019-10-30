@@ -6,6 +6,8 @@
 from mvpa2.suite import *
 import sys
 
+VOLS_PER_ACQ = 185
+
 def prepro(ds):
         # detrending
         detrender = PolyDetrendMapper(polyord = 1)
@@ -20,8 +22,17 @@ def prepro(ds):
 
         return ds3
 
-ds = prepro(fmri_dataset(sys.argv[2]))
+ds = fmri_dataset(sys.argv[2])
+datasets = []
+for i in range(0, ds.a.imghdr['dim'][4] / VOLS_PER_ACQ):
+        datasets.append(prepro(ds[i * VOLS_PER_ACQ:(i + 1) * VOLS_PER_ACQ]))
 
-nimg = map2nifti(ds, ds)
+merged = vstack(datasets, a = 'drop_nonunique')
+merged.a.mapper = ds.a.mapper
+merged.a.voxel_eldim = ds.a.voxel_eldim
+merged.a.voxel_dim = ds.a.voxel_dim
+merged.a.imghdr = ds.a.imghdr
+merged.a.imgtype = ds.a.imgtype
+
+nimg = map2nifti(ds, merged)
 nimg.to_filename(sys.argv[1])
-
