@@ -22,9 +22,28 @@ TIME_LIMIT = 10000 # maximum HRF delay to test for (ms)
 PERMUTATIONS = 50 # label permutations used to estimate null accuracy distrib
 ANOVA_SELECTION = 1 # proportion of voxels to work with
 
-CLASSES = ['blank', 'scrambled']
+# CLASSES = ['blank', 'scrambled']
+# CLASSES = ['blank', 'neutral']
+# CLASSES = ['blank', 'happy']
+# CLASSES = ['blank', 'sad']
+# CLASSES = ['blank', 'angry']
+
 # CLASSES = ['scrambled', 'neutral']
-# CLASSES = ['neutral', 'happy', 'sad', 'angry']
+# CLASSES = ['scrambled', 'happy']
+# CLASSES = ['scrambled', 'sad']
+# CLASSES = ['scrambled', 'angry']
+
+#CLASSES = ['neutral', 'happy', 'sad', 'angry']
+#CLASSES = ['neutral', 'happy', 'sad']
+#CLASSES = ['neutral', 'happy', 'angry']
+#CLASSES = ['neutral', 'sad', 'angry']
+#CLASSES = ['happy', 'sad', 'angry']
+#CLASSES = ['neutral', 'happy',]
+#CLASSES = ['neutral', 'sad']
+#CLASSES = ['neutral', 'angry']
+#CLASSES = ['happy', 'sad']
+#CLASSES = ['happy', 'angry']
+#CLASSES = ['sad', 'angry']
 
 # separate hyperplanes responsible from making an 'emotional vs neutral'
 # distinction from an 'emotion1 vs emotion2 ...' one
