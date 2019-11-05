@@ -46,14 +46,19 @@ register_results : $(addsuffix /all-weights-T1.nii.gz,  $(addprefix $(BUILD_DIR)
 
 .PHONY : pymvpa
 pymvpa : $(addprefix $(BUILD_DIR)/pymvpa/, $(IDS))
+	@echo
 
 $(BUILD_DIR)/pymvpa/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
 	@echo "running pyMVPA for $<"
-	@mkdir -p "$@" ; \
-	mask=$$(find "$(subst $(BUILD_DIR)/pymvpa,$(DATA_DIR)/feat,$@)" -name 'volbrain-mask.tmp.nii.gz') ; \
+	@mask=$$(find "$(subst $(BUILD_DIR)/pymvpa,$(DATA_DIR)/feat,$@)" -name 'volbrain-mask.tmp.nii.gz') ; \
 	id=$@ ; id=$${id##*/} ; \
-	python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" \
-	        "$<" "$$mask" "$@" "$<" # > /dev/null 2>&1
+	for category in $(SRC_DIR)/pymvpa/contrasts/* ; do \
+	    while read contrast; do \
+	        outdir=$@/$$(basename $${category})/$${contrast} ; \
+	        mkdir -p "$$outdir" ; \
+	        python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" & \
+	    done < "$$category" ; \
+	done
 
 .PHONY : detrend_normalize
 detrend_normalize : $(addsuffix /concat-brain-norm.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))

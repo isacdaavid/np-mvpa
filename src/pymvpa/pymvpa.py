@@ -8,6 +8,8 @@ matplotlib.use('Agg') # force matplotlib not to use any Xwindows backend
 import matplotlib.pyplot as plt
 from mvpa2.suite import *
 import sys
+from itertools import chain, combinations
+import re
 
 # arguments passed to script
 ATTR_FNAME = sys.argv[1] # 'data/psychopy/events.csv'
@@ -15,39 +17,16 @@ BOLD_FNAME = sys.argv[2] # 'data/pymvpa/2/concat.nii.gz'
 MASK_FNAME = sys.argv[3] # 'data/feat/2/scans/5-tr_FMRI_1.feat/volbrain-mask.nii.gz'
 OUTDIR = sys.argv[4] # 'out/pymvpa/2/'
 REDUCED_BOLD_FNAME = sys.argv[5] # 'data/pymvpa/2/means.csv'
+CLASSES = eval("['" + re.sub(",", "','", sys.argv[6]) + "']")
 
-STEP = 500 # time step between different HRF delays (ms)
+STEP = 2000 # time step between different HRF delays (ms)
 TIME_START = 0 # first HRF delay to test for (ms)
-TIME_LIMIT = 10000 # maximum HRF delay to test for (ms)
-PERMUTATIONS = 50 # label permutations used to estimate null accuracy distrib
+TIME_LIMIT = 10001 # maximum HRF delay to test for (ms)
+SLICE_TIMING_REFERENCE = +1000 # ms
+DELAYS = range(TIME_START, TIME_LIMIT, STEP)
+
+PERMUTATIONS = 2 # label permutations used to estimate null accuracy distrib
 ANOVA_SELECTION = 1 # proportion of voxels to work with
-
-# CLASSES = ['blank', 'scrambled']
-# CLASSES = ['blank', 'neutral']
-# CLASSES = ['blank', 'happy']
-# CLASSES = ['blank', 'sad']
-# CLASSES = ['blank', 'angry']
-
-# CLASSES = ['scrambled', 'neutral']
-# CLASSES = ['scrambled', 'happy']
-# CLASSES = ['scrambled', 'sad']
-# CLASSES = ['scrambled', 'angry']
-
-#CLASSES = ['neutral', 'happy', 'sad', 'angry']
-#CLASSES = ['neutral', 'happy', 'sad']
-#CLASSES = ['neutral', 'happy', 'angry']
-#CLASSES = ['neutral', 'sad', 'angry']
-#CLASSES = ['happy', 'sad', 'angry']
-#CLASSES = ['neutral', 'happy',]
-#CLASSES = ['neutral', 'sad']
-#CLASSES = ['neutral', 'angry']
-#CLASSES = ['happy', 'sad']
-#CLASSES = ['happy', 'angry']
-#CLASSES = ['sad', 'angry']
-
-# separate hyperplanes responsible from making an 'emotional vs neutral'
-# distinction from an 'emotion1 vs emotion2 ...' one
-NEUTRAL = True if 'happy' in CLASSES else False
 
 # WARNING: assigning an existing pyMVPA Dataset object (or one of its attributes)
 #          to a new variable/attribute is a call by reference. for actual copies
@@ -56,8 +35,6 @@ NEUTRAL = True if 'happy' in CLASSES else False
 ################################################################################
 # volume labeling
 ################################################################################
-
-SLICE_TIMING_REFERENCE = +1000 # ms
 
 def label(ds, attr, slice_timing_reference, hrf_delay):
         # correct for preambulus time-shift, start onset_times count at 0
@@ -179,22 +156,28 @@ def sensibility_maps_aux(model, ds):
         analyzer = model.get_sensitivity_analyzer()
         return analyzer(ds)
 
-# outputs the computed "activation" maps (rather, sensitivity masks)
+def powerset(iterable):
+        s = list(iterable)
+        return chain.from_iterable(combinations(s, r) for r in range(2, len(s) + 1))
+
+def sanitize_mask_name(string):
+        return re.sub("[' \[\]]", '', string)
+
+# outputs the computed "activation" maps (rather, sensibility masks)
 def sensibility_maps(model, ds):
         sens = sensibility_maps_aux(model, ds)
-        neu,emo = list(),list()
-        for i in range(0, len(sens.targets)):
-                if NEUTRAL and "'neutral'" in str(sens.targets[i]):
-                        neu.append(i)
-                else:
-                        emo.append(i)
-        # aggregate and normalize hyperplane weights found at .samples[0]
-        allw = normalize_weights(np.array([sens[x].samples[0] for x in neu + emo]))
-	emow = normalize_weights(np.array([sens[x].samples[0] for x in emo]))
-        if NEUTRAL:
-                neuw = normalize_weights(np.array([sens[x].samples[0] for x in neu]))
-		return allw,neuw,emow
-        return allw,emow
+        masks = dict()
+        # for i in range(0, len(sens.targets)):
+        #         masks[str(sens.targets[i])] = \
+        #                 normalize_weights(np.array([sens[i].samples[0]]))
+        for comb in powerset(CLASSES):
+                subset_pairs = []
+                for i in range(0, len(sens.targets)):
+                        if set(sens.targets[i]).issubset(comb):
+                                subset_pairs.append(sens[i].samples[0])
+                name = sanitize_mask_name(str(sorted(comb)))
+                masks[name] = normalize_weights(np.array(subset_pairs))
+        return masks
 
 # percentage of voxels with non-zero weights
 def non_empty_weights_proportion(weights):
@@ -211,7 +194,7 @@ attr = SampleAttributes(ATTR_FNAME,
 result_dist = []
 fo = open(OUTDIR + "/result-time-series.txt", "w+")
 
-for delay in range(TIME_START, TIME_LIMIT, STEP):
+for delay in DELAYS:
 	orig = fmri_dataset(BOLD_FNAME, mask = MASK_FNAME)
 	ds = orig
 	if REDUCED_BOLD_FNAME != BOLD_FNAME :
@@ -223,13 +206,11 @@ for delay in range(TIME_START, TIME_LIMIT, STEP):
         model,validator = train()
         results = validator(ds3)
         result_dist.append(np.mean(results))
-	if NEUTRAL:
-		all_weights,emo_vs_neu,hap_vs_sad = sensibility_maps(model, ds3)
-	else:
-		all_weights,hap_vs_sad = sensibility_maps(model, ds3)
+        masks = sensibility_maps(model, ds3)
+        name = sanitize_mask_name(str(sorted(CLASSES)))
         print(np.mean(results))
         fo.writelines(str(ds3.nsamples / len(CLASSES)) + " " + str(np.mean(results)) + " " +
-                      str(non_empty_weights_proportion(all_weights)) + "\n")
+                      str(non_empty_weights_proportion(masks[name])) + "\n")
 
 fo.close()
 
@@ -276,13 +257,11 @@ plt.close()
 
 # sensibility maps #############################################################
 
-if NEUTRAL:
-	all_weights,emo_vs_neu,hap_vs_sad = sensibility_maps(model, ds3)
-else:
-	all_weights,hap_vs_sad = sensibility_maps(model, ds3)
+masks = sensibility_maps(model, ds3)
+all_weights = masks[sanitize_mask_name(str(sorted(CLASSES)))]
 
 # distribution of non-zero weights, normalized to the maximum one
-plt.hist(all_weights[all_weights != 0] / max(all_weights), bins=50)
+plt.hist(all_weights[all_weights != 0] / max(all_weights), bins = 50)
 plt.savefig(OUTDIR + '/weights-dist.svg')
 plt.close()
 
@@ -294,10 +273,6 @@ plt.close()
 #nimg.to_filename(OUTDIR + '/all-weights.nii.gz')
 
 # export sensitivity maps
-nimg = map2nifti(ds, all_weights) # use ds.a.mapper to reverse flattening
-nimg.to_filename(OUTDIR + '/all-weights.nii.gz')
-nimg = map2nifti(ds, hap_vs_sad)
-nimg.to_filename(OUTDIR + '/hap_vs_sad-weights.nii.gz')
-if NEUTRAL:
-	nimg = map2nifti(ds, emo_vs_neu)
-	nimg.to_filename(OUTDIR + '/emo-vs-neu-weights-nn.nii.gz')
+for name in masks:
+        nimg = map2nifti(ds, masks[name])
+        nimg.to_filename(OUTDIR + '/' + name + '.nii.gz')
