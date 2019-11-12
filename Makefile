@@ -56,7 +56,7 @@ $(BUILD_DIR)/pymvpa/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
 	    while read contrast; do \
 	        outdir=$@/$$(basename $${category})/$${contrast} ; \
 	        mkdir -p "$$outdir" ; \
-	        python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" & \
+	        fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" & \
 	    done < "$$category" ; \
 	done
 
@@ -69,7 +69,7 @@ detrend_normalize : $(addsuffix /concat-brain-norm.nii.gz, $(addprefix $(DATA_DI
 	@python2 "$(SRC_DIR)/pymvpa/detrend-normalize.py" "$@" "$<"  > /dev/null 2>&1
 
 ################################################################################
-# post-FEAT gray matter extraction-related rules
+# post-FEAT brain maksing and atlas parcellation
 ################################################################################
 
 .PHONY : feat_brains
@@ -87,13 +87,72 @@ $(DATA_DIR)/pymvpa/%/concat-brain.nii.gz : $(DATA_DIR)/feat/%/feat.feat/filtered
 
 # %/filtered_func_data.nii.gz : % ;
 
+CEREBELLUM_ATLAS := $(DATA_DIR)/atlases/Buckner_JNeurophysiol11_MNI152/Buckner2011_17Networks_MNI152_FreeSurferConformed1mm_TightMask_REORIENTED.nii.gz
+CORTICAL_ATLAS := $(DATA_DIR)/atlases/Schaefer2018_100Parcels_17Networks_order_FSLMNI152_1mm.nii.gz
+
 .PHONY : feat_masks
-feat_masks : $(addsuffix /volbrain-mask.nii.gz, $(addprefix $(DATA_DIR)/feat/, $(IDS)))
+feat_masks : $(addsuffix /volbrain-mask.nii.gz, $(addprefix $(DATA_DIR)/feat/, $(IDS))) $(addsuffix /atlas.nii.gz, $(addprefix $(DATA_DIR)/feat/, $(IDS)))
 	@echo
 
 #TODO: add prerequisite to _brain.nii.gz images, so as to complete dependency graph.
+
+%/atlas.nii.gz : %/atlas-cort.nii.gz %/atlas-cerebellum.nii.gz %/volbrain-subcort.nii.gz
+	@echo 'merging parcellations into $@'
+	@cort=$(subst atlas.nii.gz,atlas-cort,$@) ; \
+	cerebellum=$(subst atlas.nii.gz,atlas-cerebellum,$@) ; \
+	subcort=$(subst atlas.nii.gz,volbrain-subcort,$@) ; \
+	fslmaths "$${cort}.nii.gz" -add 1 "$${cort}.complement.nii.gz" ; \
+	fslmaths "$${cerebellum}.nii.gz" -add 1 "$${cerebellum}.complement.nii.gz" ; \
+	fslmaths "$${subcort}.nii.gz" -add 1 "$${subcort}.complement.nii.gz" ; \
+	fslmaths "$${cort}.complement.nii.gz" -uthr 1 "$${cort}.complement.nii.gz"; \
+	fslmaths "$${cerebellum}.complement.nii.gz" -uthr 1 "$${cerebellum}.complement.nii.gz"; \
+	fslmaths "$${subcort}.complement.nii.gz" -uthr 1 "$${subcort}.complement.nii.gz"; \
+	fslmaths "$${cort}.nii.gz" -mul "$${subcort}.complement.nii.gz" "$${cort}.nii.gz" ; \
+	fslmaths "$${cerebellum}.nii.gz" -mul "$${cort}.complement.nii.gz" "$${cerebellum}.nii.gz" ; \
+	fslmaths "$${cort}.nii.gz" -add "$${cerebellum}.nii.gz" -add "$${subcort}.nii.gz" "$@"
+
+%/volbrain-subcort.nii.gz : %/feat.feat/reg/highres2example_func.mat %/feat.feat/example_func.nii.gz
+	@echo 'creating subcortical parcellation $@'
+	@orig_mask_dir=$(subst volbrain-subcort.nii.gz,,$(subst feat,volbrain,$@)) ; \
+	orig_mask=$$(find "$$orig_mask_dir" -name '*lab_n_mmni*') ; \
+	flirt -interp nearestneighbour \
+	      -in "$$orig_mask" \
+	      -ref "$(subst volbrain-subcort,feat.feat/example_func,$@)" \
+	      -applyxfm \
+	      -init "$<" \
+	      -out "$@"
+#       remove lateral ventricles (labels 1 and 2)
+	@fslmaths "$@" -thr 3 "$@" && fslmaths "$@" -sub 2 "$@"
+#       shift values to avoid collision with other subatlases
+	@max1=$$(fslstats "$(CORTICAL_ATLAS)" -R | cut -d ' ' -f 2 | sed -E 's/\..*//') ; \
+	max2=$$(fslstats "$(CEREBELLUM_ATLAS)" -R | cut -d ' ' -f 2 | sed -E 's/\..*//') ; \
+	fslmaths "$@" -add $$(($$max1 + $$max2)) "$@" ; \
+	fslmaths "$@" -thr $$(($$max1 + $$max2 + 1)) "$@"
+
+%/atlas-cerebellum.nii.gz : %/feat.feat/reg/highres2example_func.mat %/feat.feat/example_func.nii.gz
+	@echo 'creating cerebellar parcellation $@'
+	@flirt -interp nearestneighbour \
+	      -in "$(CEREBELLUM_ATLAS)" \
+	      -ref "$(subst atlas-cerebellum,feat.feat/example_func,$@)" \
+	      -applyxfm \
+	      -init "$<" \
+	      -out "$@"
+#       shift values to avoid collision with other subatlases
+	@max=$$(fslstats "$(CORTICAL_ATLAS)" -R | cut -d ' ' -f 2 | sed -E 's/\..*//') ; \
+	fslmaths "$@" -add $$max "$@" ; \
+	fslmaths "$@" -thr $$(($$max + 1)) "$@"
+
+%/atlas-cort.nii.gz : %/feat.feat/reg/highres2example_func.mat %/feat.feat/example_func.nii.gz
+	@echo 'creating cortical parcellation $@'
+	@flirt -interp nearestneighbour \
+	      -in "$(CORTICAL_ATLAS)" \
+	      -ref "$(subst atlas-cort,feat.feat/example_func,$@)" \
+	      -applyxfm \
+	      -init "$<" \
+	      -out "$@"
+
 %/volbrain-mask.nii.gz : %/feat.feat/reg/highres2example_func.mat %/feat.feat/example_func.nii.gz
-	@echo 'creating BOLD mask $@'
+	@echo 'creating brain mask $@'
 	@orig_mask_dir=$(subst volbrain-mask.nii.gz,,$(subst feat,volbrain,$@)) ; \
 	orig_mask=$$(find "$$orig_mask_dir" -name '*crisp*') ; \
 	flirt -interp nearestneighbour \
@@ -103,9 +162,9 @@ feat_masks : $(addsuffix /volbrain-mask.nii.gz, $(addprefix $(DATA_DIR)/feat/, $
 	      -init "$<" \
 	      -out "$@"
 
-%/reg/highres2example_func.mat : % ;
+# %/reg/highres2example_func.mat : % ;
 
-%/example_func.nii.gz : % ;
+# %/example_func.nii.gz : % ;
 
 ################################################################################
 # FSL FEAT preprocessing
