@@ -12,11 +12,11 @@ from itertools import chain, combinations
 import re
 
 # arguments passed to script
-ATTR_FNAME = sys.argv[1] # 'data/psychopy/events.csv'
-BOLD_FNAME = sys.argv[2] # 'data/pymvpa/2/concat.nii.gz'
-MASK_FNAME = sys.argv[3] # 'data/feat/2/scans/5-tr_FMRI_1.feat/volbrain-mask.nii.gz'
-OUTDIR = sys.argv[4] # 'out/pymvpa/2/'
-REDUCED_BOLD_FNAME = sys.argv[5] # 'data/pymvpa/2/means.csv'
+ATTR_FNAME = sys.argv[1]
+BOLD_FNAME = sys.argv[2]
+MASK_FNAME = sys.argv[3]
+OUTDIR = sys.argv[4]
+REDUCED_BOLD_FNAME = sys.argv[5]
 CLASSES = eval("['" + re.sub(",", "','", sys.argv[6]) + "']")
 
 STEP = 2000 # time step between different HRF delays (ms)
@@ -25,7 +25,7 @@ TIME_LIMIT = 10001 # maximum HRF delay to test for (ms)
 SLICE_TIMING_REFERENCE = +1000 # ms
 DELAYS = range(TIME_START, TIME_LIMIT, STEP)
 
-PERMUTATIONS = 2 # label permutations used to estimate null accuracy distrib
+PERMUTATIONS = 5000 # label permutations used to estimate null accuracy distrib
 ANOVA_SELECTION = 1 # proportion of voxels to work with
 
 # WARNING: assigning an existing pyMVPA Dataset object (or one of its attributes)
@@ -135,8 +135,8 @@ def make_null_dist_plot(dist_samples, empirical, nclasses):
 # sensitivity analysis
 ################################################################################
 
-# - remove sign (there's no interpretation to feature importance direction in
-#   orthogonal vector to SVM hyperplane, other than encoding class)
+# - remove sign (there's no interpretation to feature-importance direction in
+#   the orthogonal vector to SVM hyperplane, other than encoding class)
 # - L2-normalize to make sure vector sum is meaningful
 # - sum
 # - rescale to maximum weight (summed masks will be comparable operators)
@@ -152,7 +152,7 @@ def normalize_weights(weight_lists, significance = 1):
         ntile = np.sort(total)[-int(round(len(total) * significance))]
         return np.array([(0 if (x < ntile) else x) for x in total])
 
-def sensibility_maps_aux(model, ds):
+def sensitivity_maps_aux(model, ds):
         analyzer = model.get_sensitivity_analyzer()
         return analyzer(ds)
 
@@ -163,13 +163,10 @@ def powerset(iterable):
 def sanitize_mask_name(string):
         return re.sub("[' \[\]]", '', string)
 
-# outputs the computed "activation" maps (rather, sensibility masks)
-def sensibility_maps(model, ds):
-        sens = sensibility_maps_aux(model, ds)
-        masks = dict()
-        # for i in range(0, len(sens.targets)):
-        #         masks[str(sens.targets[i])] = \
-        #                 normalize_weights(np.array([sens[i].samples[0]]))
+# outputs the computed "activation" maps (rather, sensitivity masks)
+def sensitivity_maps(model, ds):
+        sens = sensitivity_maps_aux(model, ds)
+        masks = dict() 
         for comb in powerset(CLASSES):
                 subset_pairs = []
                 for i in range(0, len(sens.targets)):
@@ -206,7 +203,7 @@ for delay in DELAYS:
         model,validator = train()
         results = validator(ds3)
         result_dist.append(np.mean(results))
-        masks = sensibility_maps(model, ds3)
+        masks = sensitivity_maps(model, ds3)
         name = sanitize_mask_name(str(sorted(CLASSES)))
         print(np.mean(results))
         fo.writelines(str(ds3.nsamples / len(CLASSES)) + " " + str(np.mean(results)) + " " +
@@ -255,9 +252,9 @@ make_null_dist_plot(np.ravel(validator.null_dist.ca.dist_samples),
 plt.savefig(OUTDIR + '/null-dist.svg')
 plt.close()
 
-# sensibility maps #############################################################
+# sensitivity maps #############################################################
 
-masks = sensibility_maps(model, ds3)
+masks = sensitivity_maps(model, ds3)
 all_weights = masks[sanitize_mask_name(str(sorted(CLASSES)))]
 
 # distribution of non-zero weights, normalized to the maximum one
