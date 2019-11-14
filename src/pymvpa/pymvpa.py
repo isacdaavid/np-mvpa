@@ -25,7 +25,7 @@ TIME_LIMIT = 10001 # maximum HRF delay to test for (ms)
 SLICE_TIMING_REFERENCE = +1000 # ms
 DELAYS = range(TIME_START, TIME_LIMIT, STEP)
 
-PERMUTATIONS = 5000 # label permutations used to estimate null accuracy distrib
+PERMUTATIONS = 5 # label permutations used to estimate null accuracy distrib
 ANOVA_SELECTION = 1 # proportion of voxels to work with
 
 # WARNING: assigning an existing pyMVPA Dataset object (or one of its attributes)
@@ -262,14 +262,16 @@ plt.hist(all_weights[all_weights != 0] / max(all_weights), bins = 50)
 plt.savefig(OUTDIR + '/weights-dist.svg')
 plt.close()
 
-#parcellation = fmri_dataset('data/AAL3_BOLD.nii.gz')
-#parcellation.samples = parcellation.samples.astype(float)
-#for i in range(0, len(all_weights)):
-#	parcellation.samples[parcellation.samples == i + 1] = all_weights[i]
-#nimg = map2nifti(parcellation)
-#nimg.to_filename(OUTDIR + '/all-weights.nii.gz')
-
 # export sensitivity maps
 for name in masks:
-        nimg = map2nifti(ds, masks[name])
+        if REDUCED_BOLD_FNAME != BOLD_FNAME :
+                parcellation = fmri_dataset(MASK_FNAME)
+                parcellation.samples = parcellation.samples.astype(float)
+                for i in range(0, len(masks[name])):
+                        parcellation.samples[parcellation.samples == i + 1] = \
+                                masks[name][i]
+                nimg = map2nifti(parcellation)
+        else:
+                nimg = map2nifti(ds, masks[name])
         nimg.to_filename(OUTDIR + '/' + name + '.nii.gz')
+

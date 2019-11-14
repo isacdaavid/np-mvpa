@@ -44,6 +44,23 @@ register_results : $(addsuffix /all-weights-T1.nii.gz,  $(addprefix $(BUILD_DIR)
 # pyMVPA rules
 ################################################################################
 
+.PHONY : pymvpa_reduced
+pymvpa_reduced : $(addprefix $(BUILD_DIR)/pymvpa/reduced/, $(IDS))
+	@echo
+
+$(BUILD_DIR)/pymvpa/reduced/% : $(DATA_DIR)/pymvpa/%/atlas-means.csv $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
+	@echo "running pyMVPA for $<"
+	@mask=$$(find "$(subst $(BUILD_DIR)/pymvpa/reduced,$(DATA_DIR)/feat,$@)" -name 'atlas.nii.gz') ; \
+	id=$@ ; id=$${id##*/} ; \
+	for category in $(SRC_DIR)/pymvpa/contrasts/* ; do \
+	    while read contrast; do \
+	        outdir=$@/$$(basename $${category})/$${contrast} ; \
+	        mkdir -p "$$outdir" ; \
+	        fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$(word 2,$^)" "$$mask" "$$outdir" "$<" "$$contrast" & \
+	    done < "$$category" ; \
+	done
+
+
 .PHONY : pymvpa
 pymvpa : $(addprefix $(BUILD_DIR)/pymvpa/, $(IDS))
 	@echo
@@ -71,6 +88,15 @@ detrend_normalize : $(addsuffix /concat-brain-norm.nii.gz, $(addprefix $(DATA_DI
 ################################################################################
 # post-FEAT brain maksing and atlas parcellation
 ################################################################################
+
+.PHONY : atlas_means
+atlas_means : $(addsuffix /atlas-means.csv, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
+	@echo
+
+$(DATA_DIR)/pymvpa/%/atlas-means.csv : $(DATA_DIR)/feat/%/feat.feat/filtered_func_data.nii.gz $(DATA_DIR)/feat/%/atlas.nii.gz
+	@echo 'extracting mean atlas timeseries to $@'
+	@atlas=$(subst atlas-means.csv,atlas.nii.gz,$(subst pymvpa,feat,$@)) ; \
+	fslmeants -i "$<" --label="$$atlas" > "$@"
 
 .PHONY : feat_brains
 feat_brains : $(addsuffix /concat-brain.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
