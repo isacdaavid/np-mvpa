@@ -45,12 +45,12 @@ register_results : $(addsuffix /all-weights-T1.nii.gz,  $(addprefix $(BUILD_DIR)
 ################################################################################
 
 .PHONY : pymvpa_reduced
-pymvpa_reduced : $(addprefix $(BUILD_DIR)/pymvpa/reduced/, $(IDS))
+pymvpa_reduced : $(addprefix $(BUILD_DIR)/pymvpa/reduced1000-7-norm/, $(IDS))
 	@echo
 
-$(BUILD_DIR)/pymvpa/reduced/% : $(DATA_DIR)/pymvpa/%/atlas-means.csv $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
+$(BUILD_DIR)/pymvpa/reduced1000-7-norm/% : $(DATA_DIR)/pymvpa/%/atlas-means.csv $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
 	@echo "running pyMVPA for $<"
-	@mask=$$(find "$(subst $(BUILD_DIR)/pymvpa/reduced,$(DATA_DIR)/feat,$@)" -name 'atlas.nii.gz') ; \
+	@mask=$$(find "$(subst $(BUILD_DIR)/pymvpa/reduced1000-7-norm,$(DATA_DIR)/feat,$@)" -name 'atlas.nii.gz') ; \
 	id=$@ ; id=$${id##*/} ; \
 	for category in $(SRC_DIR)/pymvpa/contrasts/* ; do \
 	    while read contrast; do \
@@ -59,7 +59,6 @@ $(BUILD_DIR)/pymvpa/reduced/% : $(DATA_DIR)/pymvpa/%/atlas-means.csv $(DATA_DIR)
 	        fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$(word 2,$^)" "$$mask" "$$outdir" "$<" "$$contrast" & \
 	    done < "$$category" ; \
 	done
-
 
 .PHONY : pymvpa
 pymvpa : $(addprefix $(BUILD_DIR)/pymvpa/, $(IDS))
@@ -76,6 +75,14 @@ $(BUILD_DIR)/pymvpa/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
 	        fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" & \
 	    done < "$$category" ; \
 	done
+
+.PHONY : detrend_normalize_reduced
+detrend_normalize_reduced : $(addsuffix /filtered_func_data-norm.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
+	@echo
+
+$(DATA_DIR)/pymvpa/%/filtered_func_data-norm.nii.gz : $(DATA_DIR)/feat/%/feat.feat/filtered_func_data.nii.gz
+	@echo 'detrending and normalizing into $@'
+	@python2 "$(SRC_DIR)/pymvpa/detrend-normalize.py" "$@" "$<"  > /dev/null 2>&1
 
 .PHONY : detrend_normalize
 detrend_normalize : $(addsuffix /concat-brain-norm.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
@@ -113,8 +120,8 @@ $(DATA_DIR)/pymvpa/%/concat-brain.nii.gz : $(DATA_DIR)/feat/%/feat.feat/filtered
 
 # %/filtered_func_data.nii.gz : % ;
 
-CEREBELLUM_ATLAS := $(DATA_DIR)/atlases/Buckner_JNeurophysiol11_MNI152/Buckner2011_17Networks_MNI152_FreeSurferConformed1mm_TightMask_REORIENTED.nii.gz
-CORTICAL_ATLAS := $(DATA_DIR)/atlases/Schaefer2018_100Parcels_17Networks_order_FSLMNI152_1mm.nii.gz
+CEREBELLUM_ATLAS := $(DATA_DIR)/atlases/Buckner_JNeurophysiol11_MNI152/Buckner2011_7Networks_MNI152_FreeSurferConformed1mm_TightMask_REORIENTED.nii.gz
+CORTICAL_ATLAS := $(DATA_DIR)/atlases/Schaefer2018_FSLMNI152_1mm/Schaefer2018_1000Parcels_7Networks_order_FSLMNI152_1mm.nii.gz
 
 .PHONY : feat_masks
 feat_masks : $(addsuffix /volbrain-mask.nii.gz, $(addprefix $(DATA_DIR)/feat/, $(IDS))) $(addsuffix /atlas.nii.gz, $(addprefix $(DATA_DIR)/feat/, $(IDS)))
