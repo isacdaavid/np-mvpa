@@ -100,7 +100,7 @@ detrend_normalize : $(addsuffix /concat-brain-norm.nii.gz, $(addprefix $(DATA_DI
 atlas_means : $(addsuffix /atlas-means.csv, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
 	@echo
 
-$(DATA_DIR)/pymvpa/%/atlas-means.csv : $(DATA_DIR)/feat/%/feat.feat/filtered_func_data.nii.gz $(DATA_DIR)/feat/%/atlas.nii.gz
+$(DATA_DIR)/pymvpa/%/atlas-means.csv : $(DATA_DIR)/pymvpa/%/filtered_func_data-norm.nii.gz $(DATA_DIR)/feat/%/atlas.nii.gz
 	@echo 'extracting mean atlas timeseries to $@'
 	@atlas=$(subst atlas-means.csv,atlas.nii.gz,$(subst pymvpa,feat,$@)) ; \
 	fslmeants -i "$<" --label="$$atlas" > "$@"
