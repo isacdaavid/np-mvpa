@@ -9,28 +9,30 @@ DATA_DIR := data
 
 .PHONY : build all
 all : build
-build : concatenate_runs
+build : register_results
 
 IDS_FILE := $(DATA_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
 # note the use of the lazy assignment operator (strict evaluation) to avoid
 # memoization of IDS after $(IDS_FILE) is regenerated
-IDS = $(shell cut -d ' ' -f 1 $(IDS_FILE) | sort)
+IDS = $(shell cut -d ' ' -f 1 $(IDS_FILE))
 DICOMS = $(shell find $(DATA_DIR)/xnat/images/ -type d -name DICOM | \
                  grep -E '(FMRI|RestState|T1|T2)' | sort)
 VOLBRAIN_ZIPS = $(shell find $(DATA_DIR)/volbrain/ -type f -name '*.zip')
 VOLBRAIN_IMAGES = $(shell find data/volbrain/ -type f -name 'n_mmni*')
+CEREBELLUM_ATLAS := $(DATA_DIR)/atlases/Buckner_JNeurophysiol11_MNI152/Buckner2011_7Networks_MNI152_FreeSurferConformed1mm_TightMask_REORIENTED.nii.gz
+CORTICAL_ATLAS := $(DATA_DIR)/atlases/Schaefer2018_FSLMNI152_1mm/Schaefer2018_1000Parcels_7Networks_order_FSLMNI152_1mm.nii.gz
+SENSITIVITY_MAPS = $(shell find $(BUILD_DIR)/pymvpa -type f -name '*.nii.gz')
 
 ################################################################################
-# transform back to T1w space
+# transform resulting sensitivity maps back to T1w space
 ################################################################################
 
 .PHONY : register_results
-register_results : $(addsuffix /all-weights-T1.nii.gz,  $(addprefix $(BUILD_DIR)/pymvpa/, $(IDS)))
+register_results : $(SENSITIVITY_MAPS:.nii.gz=-T1.nii.gz)
 
-%-weights-T1.nii.gz : %-weights.nii.gz
-	@echo 'transforming $< to T1w space'
-	@id=$(subst $(BUILD_DIR)/pymvpa/,,$<) ; \
-	id=$${id%/*} ; \
+%-T1.nii.gz : %.nii.gz
+	@echo 'transforming to T1w space $<'
+	@id=$< ; id=$${id%/*/*/*} ; id=$${id##*/} ; \
 	t1=$$(find "$(DATA_DIR)/volbrain/$$id" -name '*_brain.nii.gz') ; \
 	mat=$$(find "$(DATA_DIR)/feat/$$id" -name '*func2highres.mat' | head -n1) ; \
 	flirt -interp trilinear \
@@ -44,13 +46,14 @@ register_results : $(addsuffix /all-weights-T1.nii.gz,  $(addprefix $(BUILD_DIR)
 # pyMVPA rules
 ################################################################################
 
+# train classifiers based on reduced timeseries CSV
 .PHONY : pymvpa_reduced
-pymvpa_reduced : $(addprefix $(BUILD_DIR)/pymvpa/reduced1000-7-norm/, $(IDS))
+pymvpa_reduced : $(addprefix $(BUILD_DIR)/pymvpa/reduced/, $(IDS))
 	@echo
 
-$(BUILD_DIR)/pymvpa/reduced1000-7-norm/% : $(DATA_DIR)/pymvpa/%/atlas-means.csv $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
+$(BUILD_DIR)/pymvpa/reduced/% : $(DATA_DIR)/pymvpa/%/atlas-means.csv $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
 	@echo "running pyMVPA for $<"
-	@mask=$$(find "$(subst $(BUILD_DIR)/pymvpa/reduced1000-7-norm,$(DATA_DIR)/feat,$@)" -name 'atlas.nii.gz') ; \
+	@mask=$$(find "$(subst $(BUILD_DIR)/pymvpa/reduced,$(DATA_DIR)/feat,$@)" -name 'atlas.nii.gz') ; \
 	id=$@ ; id=$${id##*/} ; \
 	for category in $(SRC_DIR)/pymvpa/contrasts/* ; do \
 	    while read contrast; do \
@@ -60,13 +63,14 @@ $(BUILD_DIR)/pymvpa/reduced1000-7-norm/% : $(DATA_DIR)/pymvpa/%/atlas-means.csv 
 	    done < "$$category" ; \
 	done
 
-.PHONY : pymvpa
-pymvpa : $(addprefix $(BUILD_DIR)/pymvpa/, $(IDS))
+# train classifiers based on whole NIFTIs
+.PHONY : pymvpa_whole
+pymvpa : $(addprefix $(BUILD_DIR)/pymvpa/whole/, $(IDS))
 	@echo
 
-$(BUILD_DIR)/pymvpa/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
+$(BUILD_DIR)/pymvpa/whole/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
 	@echo "running pyMVPA for $<"
-	@mask=$$(find "$(subst $(BUILD_DIR)/pymvpa,$(DATA_DIR)/feat,$@)" -name 'volbrain-mask.tmp.nii.gz') ; \
+	@mask=$$(find "$(subst $(BUILD_DIR)/pymvpa/whole,$(DATA_DIR)/feat,$@)" -name 'volbrain-mask.tmp.nii.gz') ; \
 	id=$@ ; id=$${id##*/} ; \
 	for category in $(SRC_DIR)/pymvpa/contrasts/* ; do \
 	    while read contrast; do \
@@ -93,7 +97,7 @@ detrend_normalize : $(addsuffix /concat-brain-norm.nii.gz, $(addprefix $(DATA_DI
 	@python2 "$(SRC_DIR)/pymvpa/detrend-normalize.py" "$@" "$<"  > /dev/null 2>&1
 
 ################################################################################
-# post-FEAT brain maksing and atlas parcellation
+# post-FEAT brain masking and atlas parcellation
 ################################################################################
 
 .PHONY : atlas_means
@@ -119,9 +123,6 @@ $(DATA_DIR)/pymvpa/%/concat-brain.nii.gz : $(DATA_DIR)/feat/%/feat.feat/filtered
 	fslmaths "$<" -mul "$${mask}.tmp.nii.gz" "$@"
 
 # %/filtered_func_data.nii.gz : % ;
-
-CEREBELLUM_ATLAS := $(DATA_DIR)/atlases/Buckner_JNeurophysiol11_MNI152/Buckner2011_7Networks_MNI152_FreeSurferConformed1mm_TightMask_REORIENTED.nii.gz
-CORTICAL_ATLAS := $(DATA_DIR)/atlases/Schaefer2018_FSLMNI152_1mm/Schaefer2018_1000Parcels_7Networks_order_FSLMNI152_1mm.nii.gz
 
 .PHONY : feat_masks
 feat_masks : $(addsuffix /volbrain-mask.nii.gz, $(addprefix $(DATA_DIR)/feat/, $(IDS))) $(addsuffix /atlas.nii.gz, $(addprefix $(DATA_DIR)/feat/, $(IDS)))
@@ -260,7 +261,7 @@ $(DATA_DIR)/volbrain/%/ :
 	@mkdir -p "$@"
 
 ################################################################################
-# convert xnat DICOMs to Nifti
+# convert DICOMs to Nifti
 ################################################################################
 
 .PHONY : nifti

@@ -19,18 +19,18 @@ OUTDIR = sys.argv[4]
 REDUCED_BOLD_FNAME = sys.argv[5]
 CLASSES = eval("['" + re.sub(",", "','", sys.argv[6]) + "']")
 
-STEP = 2000 # time step between different HRF delays (ms)
-TIME_START = 0 # first HRF delay to test for (ms)
-TIME_LIMIT = 10001 # maximum HRF delay to test for (ms)
+STEP = 2000 # time step between different Hemodynamic Response delays (ms)
+TIME_START = 0 # first HR delay to test for (ms)
+TIME_LIMIT = 10001 # maximum HR delay to test for (ms)
 SLICE_TIMING_REFERENCE = +1000 # ms
 DELAYS = range(TIME_START, TIME_LIMIT, STEP)
 
-PERMUTATIONS = 5 # label permutations used to estimate null accuracy distrib
-ANOVA_SELECTION = 1 # proportion of voxels to work with
+PERMUTATIONS = 5000 # label permutations used to estimate null accuracy distrib
+ANOVA_SELECTION = .1 # proportion of features to work with
 
 # WARNING: assigning an existing pyMVPA Dataset object (or one of its attributes)
 #          to a new variable/attribute is a call by reference. for actual copies
-#          you must use ds.copy(deep=True, ...)
+#          you must use dataset.copy(deep=True, ...)
 
 ################################################################################
 # volume labeling
