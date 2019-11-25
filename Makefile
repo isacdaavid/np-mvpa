@@ -21,7 +21,27 @@ VOLBRAIN_ZIPS = $(shell find $(DATA_DIR)/volbrain/ -type f -name '*.zip')
 VOLBRAIN_IMAGES = $(shell find data/volbrain/ -type f -name 'n_mmni*')
 CEREBELLUM_ATLAS := $(DATA_DIR)/atlases/Buckner_JNeurophysiol11_MNI152/Buckner2011_7Networks_MNI152_FreeSurferConformed1mm_TightMask_REORIENTED.nii.gz
 CORTICAL_ATLAS := $(DATA_DIR)/atlases/Schaefer2018_FSLMNI152_1mm/Schaefer2018_1000Parcels_7Networks_order_FSLMNI152_1mm.nii.gz
-SENSITIVITY_MAPS = $(shell find $(BUILD_DIR)/pymvpa -type f -name '*.nii.gz')
+SENSITIVITY_MAPS = $(shell find $(BUILD_DIR)/pymvpa -type f -name '*.nii.gz' | grep -v T1)
+
+################################################################################
+# poststats
+################################################################################
+
+.PHONY : poststats
+poststats : # pymvpa
+	@for reduced in $$(ls $(BUILD_DIR)/pymvpa) ; do \
+	    for category in $(SRC_DIR)/pymvpa/contrasts/* ; do \
+	        while read contrast; do \
+	            outdir=$(BUILD_DIR)/poststats/$${reduced}/$$(basename $$category)/$${contrast} ; \
+	            echo "running result statistics for $$outdir" ; \
+	            mkdir -p "$$outdir" ; \
+	            paths=$$(find "$(BUILD_DIR)/pymvpa/$$reduced" -type d -name "$${contrast}" -printf "'%p'\n" | \
+	            tr '\n' , ); \
+	            nclasses=$$(awk -F , '{print NF}' <<< "$$contrast") ; \
+	            Rscript -e "INPATH <- c($${paths::-1}) ; OUTPATH <- \"$$outdir\" ; NCLASSES <- $$nclasses ; source('$(SRC_DIR)/poststats/poststats.R')" & \
+	        done < "$$category" ; \
+	    done ; \
+	done ;
 
 ################################################################################
 # transform resulting sensitivity maps back to T1w space
