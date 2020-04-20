@@ -22,24 +22,32 @@ VOLBRAIN_IMAGES = $(shell find data/volbrain/ -type f -name 'n_mmni*')
 CEREBELLUM_ATLAS := $(DATA_DIR)/atlases/Buckner_JNeurophysiol11_MNI152/Buckner2011_7Networks_MNI152_FreeSurferConformed1mm_TightMask_REORIENTED.nii.gz
 CORTICAL_ATLAS := $(DATA_DIR)/atlases/Schaefer2018_FSLMNI152_1mm/Schaefer2018_1000Parcels_7Networks_order_FSLMNI152_1mm.nii.gz
 SENSITIVITY_MAPS = $(shell find $(BUILD_DIR)/pymvpa -type f -name '*.nii.gz' | grep -v T1)
+ZMAPS = $(shell find $(BUILD_DIR)/poststats -type f -name 'z-scores-weights-T1.nii.gz')
 
 ################################################################################
 # poststats
 ################################################################################
 
+.PHONY : smooth_zmaps
+smooth_zmaps : $(ZMAPS:.nii.gz=-smooth7mm.nii.gz)
+
+%-smooth7mm.nii.gz : %.nii.gz
+	@echo 'gaussian-smoothing (7mm FWHM) $<'
+	@fslmaths "$<" -s 2.97 "$@"
+
 .PHONY : poststats
-poststats : # pymvpa
+poststats :
 	@for reduced in $$(ls $(BUILD_DIR)/pymvpa) ; do \
 	    for category in $(SRC_DIR)/pymvpa/contrasts/* ; do \
 	        while read contrast; do \
 	            outdir=$(BUILD_DIR)/poststats/$${reduced}/$$(basename $$category)/$${contrast} ; \
 	            echo "running result statistics for $$outdir" ; \
 	            mkdir -p "$$outdir" ; \
-	            paths=$$(find "$(BUILD_DIR)/pymvpa/$$reduced" -type d -name "$${contrast}" -printf "'%p'\n" | \
-	            tr '\n' , ); \
+	            paths=$$(find "$(BUILD_DIR)/pymvpa/$$reduced" -type d -name "$${contrast}" -printf "'%p'\n" | tr '\n' , ); \
 	            nclasses=$$(awk -F , '{print NF}' <<< "$$contrast") ; \
 	            Rscript -e "INPATH <- c($${paths::-1}) ; OUTPATH <- \"$$outdir\" ; NCLASSES <- $$nclasses ; source('$(SRC_DIR)/poststats/poststats.R')" & \
 	        done < "$$category" ; \
+	        sleep 10m ; \
 	    done ; \
 	done ;
 
@@ -85,8 +93,8 @@ $(BUILD_DIR)/pymvpa/reduced/% : $(DATA_DIR)/pymvpa/%/atlas-means.csv $(DATA_DIR)
 
 # train classifiers based on whole NIFTIs
 .PHONY : pymvpa_whole
-pymvpa : $(addprefix $(BUILD_DIR)/pymvpa/whole/, $(IDS))
-	@echo
+pymvpa_whole : $(addprefix $(BUILD_DIR)/pymvpa/whole/, $(IDS))
+	@echo $<
 
 $(BUILD_DIR)/pymvpa/whole/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
 	@echo "running pyMVPA for $<"
@@ -216,6 +224,9 @@ feat_masks : $(addsuffix /volbrain-mask.nii.gz, $(addprefix $(DATA_DIR)/feat/, $
 	      -init "$<" \
 	      -out "$@"
 
+# FIXME: feat.feat/ dirs are created as soon as feat starts. this confuses
+#        dependents, which actually need it to finish creating all files
+
 # %/reg/highres2example_func.mat : % ;
 
 # %/example_func.nii.gz : % ;
@@ -228,15 +239,14 @@ feat_masks : $(addsuffix /volbrain-mask.nii.gz, $(addprefix $(DATA_DIR)/feat/, $
 feat_prepro : $(addsuffix //feat.feat, $(addprefix $(DATA_DIR)/feat/, $(IDS)))
 	@echo
 
-# FIXME: fix dependency to be on pymvpa/concat.nii.gz, not just pymvpa/
-$(DATA_DIR)/feat/%/feat.feat : $(DATA_DIR)/pymvpa/%
-	@echo "FEAT preprocessing into $@"
-	@featdir=$(subst pymvpa,feat,$<) ; mkdir -p "$$featdir" ; \
-	t1dir=$(subst pymvpa,volbrain,$<) ; \
+$(DATA_DIR)/feat/%/feat.feat : $(DATA_DIR)/pymvpa/%/concat.nii.gz
+	@echo "preprocessing with FEAT (high-pass, slice timing, motion correction and T1 registration) and saving into $@"
+	@featdir=$(subst concat.nii.gz,,$(subst pymvpa,feat,$<)) ; mkdir -p "$$featdir" ; \
+	t1dir=$(subst concat.nii.gz,,$(subst pymvpa,volbrain,$<)) ; \
 	t1=$$(find "$$t1dir" -name '*_brain.nii.gz') ; \
-	nvols=$$(fslnvols "$</concat.nii.gz") ; \
-	sed "s|MVPA_OUTPUTDIR|$$(pwd)/$${featdir}/feat| ; s|MVPA_FEAT_FILES|$$(pwd)/$</concat.nii.gz| ; s|MVPA_HIGHRES_FILES|$$(pwd)/$${t1}| ; s|MVPA_NVOLS|$$nvols|" \
-	    "$(SRC_DIR)/feat/design.fsf" > "$${featdir}/design.fsf" ; \
+	nvols=$$(fslnvols "$<") ; \
+	sed "s|MVPA_OUTPUTDIR|$$(pwd)/$${featdir}/feat| ; s|MVPA_FEAT_FILES|$$(pwd)/$<| ; s|MVPA_HIGHRES_FILES|$$(pwd)/$${t1}| ; s|MVPA_NVOLS|$$nvols|" \
+	    "$(SRC_DIR)/feat/1.prepro-design.fsf" > "$${featdir}/design.fsf" ; \
 	feat "$${featdir}/design.fsf"
 
 .PHONY : concatenate
@@ -244,7 +254,7 @@ concatenate : $(addsuffix /concat.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS
 	@echo
 
 $(DATA_DIR)/pymvpa/%/concat.nii.gz : $(DATA_DIR)/xnat/images/%
-	@echo 'concatenating runs into $@'
+	@echo 'concatenating fMRI series into $@'
 	@dir=$@ ; mkdir -p "$${dir%/*}" ; \
 	fmris=($$(find "$<" -type f -name '*nifti.nii.gz' | grep 'tr_FMRI' | sort --version-sort)) ; \
 	python2 "$(SRC_DIR)/pymvpa/concatenate.py" "$@" $${fmris[@]} > /dev/null 2>&1
@@ -253,6 +263,9 @@ $(DATA_DIR)/pymvpa/%/concat.nii.gz : $(DATA_DIR)/xnat/images/%
 ################################################################################
 # volbrain-related rules
 ################################################################################
+
+# FIXME: requires manual upload/download from https://volbrain.upv.es
+#        reimplement with freesurfer?
 
 .PHONY : t1w_brain_extraction
 t1w_brain_extraction : $(VOLBRAIN_IMAGES:.nii=_brain.nii.gz)
@@ -266,7 +279,6 @@ $(DATA_DIR)/volbrain/%_brain.nii.gz : $(DATA_DIR)/volbrain/%.nii
 volbrain_unzip : $(VOLBRAIN_ZIPS:.zip=.volbrain)
 	@echo
 
-# FIXME: requires manual upload/download from https://volbrain.upv.es
 %.volbrain : %.zip
 	@echo 'unzip-ing $<'
 	@mkdir "$@" && unzip -q "$<" -d "$@" && rm "$<"
