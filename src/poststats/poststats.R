@@ -8,8 +8,10 @@ source("src/poststats/R_rainclouds.R")
 library(reshape2) # acast()
 library(plotly)
 library(parallel) # mclapply
+library(oro.nifti)
+library(neurobase)
 
-## variables passed to script (with example values):
+## arguments passed to script (with example values):
 ## INPATH <- c('out/pymvpa/sub1/contrast1/', 'out/pymvpa/sub2/contrast1/', 'etc')
 ## OUTPATH <- 'out/poststats/contrast1/'
 ## NCLASSES <- 3
@@ -111,7 +113,7 @@ plot_maxima_rank <- function(best) {
         geom_point(#show.legend = FALSE,
                    shape = 21, stroke = 2.5,
                    aes(color = subject,
-                       ## fill = factor(sample_size),
+                       ## fill = factor(SAMPLE_SIZE),
                        size = ocurrences,
                        alpha = best$ms)) +
         scale_alpha(name = "Latencia (ms)", range = c(1, .2)) +
@@ -126,7 +128,7 @@ plot_maxima_rank <- function(best) {
 }
 
 plot_statistical_test <- function(nulls, best) {
-    magic <- .076
+    magic <- .0375
     title <- paste0("Dcₒₕₑₙ = ",
                     round(d_cohen(best$mean_accuracy, nulls$mean_accuracy), 2))
     ggplot() +
@@ -148,7 +150,7 @@ plot_statistical_test <- function(nulls, best) {
                      best, outlier.shape = NA, alpha = 1, width = .01, fill='gray') +
         geom_boxplot(aes( x = rep(0, nrow(nulls)), y = mean_accuracy),
                      nulls, outlier.shape = NA, alpha = 1, width = .01) +
-        geom_point(aes(x = magic * as.numeric(subject) - .435 - magic,
+        geom_point(aes(x = magic * as.numeric(subject) - .45 - magic,
                        y = mean_accuracy, color = subject), best, size = 3) +
         scale_x_continuous(breaks = NULL) +
         scale_fill_discrete(name = "Sujeto") +
@@ -229,7 +231,14 @@ time_series_files <-
     unname(sapply(INPATH, function(x) paste0(x, '/result-time-series.txt')))
 null_dist_files <-
     unname(sapply(INPATH, function(x) paste0(x, '/null-dist.txt')))
+map_files <- unname(sapply(INPATH, function(x) {
+	lengths <- sapply(list.files(x, "T1.nii.gz"), nchar)
+        file <- names(lengths[lengths == max(lengths)])
+	paste0(x, '/', file)
+}))
+print(map_files)
 
+## FIXME: don't hard-code number of digits in subject ID
 df <- do.call(rbind, lapply(time_series_files, function(file) {
     df <- read.csv(file, header = FALSE, sep = " ")
     subject <- as.factor(regmatches(file, regexpr("\\d{5}", file)))
@@ -244,9 +253,10 @@ nulls <- do.call(rbind, lapply(null_dist_files, function(file) {
 }))
 names(nulls) <- c("mean_accuracy", "subject")
 
-df2 <- df[df$sample_size == 150, ]
+df2 <- df[df$sample_size == SAMPLE_SIZE, ]
 nulls <- nulls[nulls$subject %in% df2$subject, ]
 df2 <- df2[df2$subject %in% nulls$subject, ]
+rm(df)
 
 best <- user_maxima(df2)
 nulls$subject <- factor(nulls$subject, levels = levels(best$subject))
@@ -295,6 +305,7 @@ dev.off()
 svg(paste0(OUTPATH, '/test.svg'), width = 10, height = 10)
 plot(plot_statistical_test(nulls, best))
 dev.off()
+rm(best)
 
 ## sampling_periods <- seq(max(df2$ms) / TIME_STEP, 1) * TIME_STEP
 ## time_limits <- seq(0, TIME_LIMIT, TIME_STEP)
@@ -337,4 +348,29 @@ plot(rev(sort(pvals)), xlab = "Rango", ylab = "Valor p", main = mean_p)
 abline(.05, 0)
 abline(mean(pvals), 0, col = "red")
 dev.off()
+rm(nulls)
 
+## statistical maps on MNI space ###############################################
+
+gc()
+models <- lapply(map_files, function(path) readnii(path))
+mean_params <- Reduce(function(a, b) {a + b}, models) / length(models)
+models_matrix <- do.call(rbind, lapply(models, c))
+rm(models) ; gc()
+sd_params <- nifti(array(apply(models_matrix, 2, sd), dim = dim(mean_params)),
+                   dim = dim(mean_params),
+                   datatype = datatype(mean_params),
+                   pixdim = pixdim(mean_params),
+                   xyzt_units = xyzt_units(mean_params),
+                   qoffset_x = qoffset_x(mean_params),
+                   qoffset_y = qoffset_y(mean_params),
+                   qoffset_z = qoffset_z(mean_params))
+rm(models_matrix) ; gc()
+## dirty trick to fix image orientation (conversion to matrix messed it up)
+sd_params2 <- mean_params + sd_params - mean_params
+rm(sd_params) ; gc()
+z_scores <- mean_params / sd_params2
+z_scores[is.nan(z_scores)] <- 0
+writenii(mean_params, paste0(OUTPATH, '/mean-weights-T1.nii.gz'))
+writenii(sd_params2, paste0(OUTPATH, '/sd-weights-T1.nii.gz'))
+writenii(z_scores, paste0(OUTPATH, '/z-scores-weights-T1.nii.gz'))
