@@ -3,8 +3,9 @@
 # author: Isaac David <isacdaavid@at@isacdaavid@dot@info>
 # license: GPLv3 or later
 
-from mvpa2.suite import *
 import sys
+sys.path.append('/home/inb/lconcha/fmrilab_software/miniconda2/lib/python2.7/site-packages')
+from mvpa2.suite import *
 
 datasets = []
 for filename in sys.argv[2:]:

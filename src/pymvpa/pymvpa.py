@@ -3,11 +3,12 @@
 # author: Isaac David <isacdaavid@at@isacdaavid@dot@info>
 # license: GPLv3 or later
 
+import sys
+sys.path.append('/home/inb/lconcha/fmrilab_software/miniconda2/lib/python2.7/site-packages')
 import matplotlib
 matplotlib.use('Agg') # force matplotlib not to use any Xwindows backend
 import matplotlib.pyplot as plt
 from mvpa2.suite import *
-import sys
 from itertools import chain, combinations
 import re
 
@@ -26,7 +27,7 @@ SLICE_TIMING_REFERENCE = +1000 # ms
 DELAYS = range(TIME_START, TIME_LIMIT, STEP)
 
 PERMUTATIONS = 5000 # label permutations used to estimate null accuracy distrib
-ANOVA_SELECTION = .1 # proportion of features to work with
+ANOVA_SELECTION = 1 # proportion of features to work with
 
 # WARNING: assigning an existing pyMVPA Dataset object (or one of its attributes)
 #          to a new variable/attribute is a call by reference. for actual copies
@@ -166,7 +167,7 @@ def sanitize_mask_name(string):
 # outputs the computed "activation" maps (rather, sensitivity masks)
 def sensitivity_maps(model, ds):
         sens = sensitivity_maps_aux(model, ds)
-        masks = dict() 
+        masks = dict()
         for comb in powerset(CLASSES):
                 subset_pairs = []
                 for i in range(0, len(sens.targets)):
@@ -192,12 +193,12 @@ result_dist = []
 fo = open(OUTDIR + "/result-time-series.txt", "w+")
 
 for delay in DELAYS:
-	orig = fmri_dataset(BOLD_FNAME, mask = MASK_FNAME)
-	ds = orig
-	if REDUCED_BOLD_FNAME != BOLD_FNAME :
-		# load low-dimensional version of dataset
-		ds = Dataset(np.genfromtxt(REDUCED_BOLD_FNAME, delimiter=' '))
-		ds.sa = orig.sa
+        orig = fmri_dataset(BOLD_FNAME, mask = MASK_FNAME)
+        ds = orig
+        if REDUCED_BOLD_FNAME != BOLD_FNAME :
+                # load low-dimensional version of dataset
+                ds = Dataset(np.genfromtxt(REDUCED_BOLD_FNAME, delimiter=' '))
+                ds.sa = orig.sa
         ds2 = label(ds, attr, SLICE_TIMING_REFERENCE, delay)
         ds3 = subsample(ds2)
         model,validator = train()
@@ -224,9 +225,9 @@ optimal_delay = (result_dist.index(max(result_dist)) * STEP) + TIME_START
 orig = fmri_dataset(BOLD_FNAME, mask = MASK_FNAME)
 ds = orig
 if REDUCED_BOLD_FNAME != BOLD_FNAME :
-	# load low-dimensional version of dataset
-	ds = Dataset(np.genfromtxt(REDUCED_BOLD_FNAME, delimiter=' '))
-	ds.sa = orig.sa
+        # load low-dimensional version of dataset
+        ds = Dataset(np.genfromtxt(REDUCED_BOLD_FNAME, delimiter=' '))
+        ds.sa = orig.sa
 ds2 = label(ds, attr, SLICE_TIMING_REFERENCE, optimal_delay)
 ds3 = subsample(ds2)
 # null accuracy estimation using Monte-Carlo method
