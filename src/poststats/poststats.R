@@ -232,7 +232,7 @@ time_series_files <-
 null_dist_files <-
     unname(sapply(INPATH, function(x) paste0(x, '/null-dist.txt')))
 map_files <- unname(sapply(INPATH, function(x) {
-	lengths <- sapply(list.files(x, "T1.nii.gz"), nchar)
+	lengths <- sapply(list.files(x, "-T1-smooth.nii.gz"), nchar)
         file <- names(lengths[lengths == max(lengths)])
 	paste0(x, '/', file)
 }))

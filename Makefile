@@ -28,13 +28,6 @@ ZMAPS = $(shell find $(BUILD_DIR)/poststats -type f -name 'z-scores-weights-T1.n
 # poststats
 ################################################################################
 
-.PHONY : smooth_zmaps
-smooth_zmaps : $(ZMAPS:.nii.gz=-smooth7mm.nii.gz)
-
-%-smooth7mm.nii.gz : %.nii.gz
-	@echo 'gaussian-smoothing (7mm FWHM) $<'
-	@fslmaths "$<" -s 2.97 "$@"
-
 .PHONY : poststats
 poststats :
 	@for reduced in $$(ls $(BUILD_DIR)/pymvpa) ; do \
@@ -45,20 +38,21 @@ poststats :
 	            mkdir -p "$$outdir" ; \
 	            paths=$$(find "$(BUILD_DIR)/pymvpa/$$reduced" -type d -name "$${contrast}" -printf "'%p'\n" | tr '\n' , ); \
 	            nclasses=$$(awk -F , '{print NF}' <<< "$$contrast") ; \
-	            Rscript -e "INPATH <- c($${paths::-1}) ; OUTPATH <- \"$$outdir\" ; NCLASSES <- $$nclasses ; source('$(SRC_DIR)/poststats/poststats.R')" & \
+	            Rscript -e "INPATH <- c($${paths::-1}) ; OUTPATH <- \"$$outdir\" ; NCLASSES <- $$nclasses ; source('$(SRC_DIR)/poststats/poststats.R')" & sleep 1m ; \
 	        done < "$$category" ; \
-	        sleep 10m ; \
+	        sleep 5m ; \
 	    done ; \
 	done ;
 
 ################################################################################
-# transform resulting sensitivity maps back to T1w space
+# transform resulting sensitivity maps back to T1w space, then
+# denoise to improve spatial detection at group analysis
 ################################################################################
 
 .PHONY : register_results
-register_results : $(SENSITIVITY_MAPS:.nii.gz=-T1.nii.gz)
+register_results : $(SENSITIVITY_MAPS:.nii.gz=-T1-smooth.nii.gz)
 
-%-T1.nii.gz : %.nii.gz
+%-T1-smooth.nii.gz : %.nii.gz
 	@echo 'transforming to T1w space $<'
 	@id=$< ; id=$${id%/*/*/*} ; id=$${id##*/} ; \
 	t1=$$(find "$(DATA_DIR)/volbrain/$$id" -name '*_brain.nii.gz') ; \
@@ -68,7 +62,9 @@ register_results : $(SENSITIVITY_MAPS:.nii.gz=-T1.nii.gz)
 	      -ref "$$t1" \
 	      -applyxfm \
 	      -init "$$mat" \
-	      -out "$@"
+	      -out "$(subst .nii.gz,-T1,$<)"
+	@echo 'gaussian-smoothing (7mm FWHM) $@'
+	@fslmaths "$(subst .nii.gz,-T1.nii.gz,$<)" -s 2.972 "$@"
 
 ################################################################################
 # pyMVPA rules
