@@ -128,7 +128,7 @@ plot_maxima_rank <- function(best) {
 }
 
 plot_statistical_test <- function(nulls, best) {
-    magic <- .0375
+    magic <- .0285
     title <- paste0("Dcₒₕₑₙ = ",
                     round(d_cohen(best$mean_accuracy, nulls$mean_accuracy), 2))
     ggplot() +
@@ -150,7 +150,7 @@ plot_statistical_test <- function(nulls, best) {
                      best, outlier.shape = NA, alpha = 1, width = .01, fill='gray') +
         geom_boxplot(aes( x = rep(0, nrow(nulls)), y = mean_accuracy),
                      nulls, outlier.shape = NA, alpha = 1, width = .01) +
-        geom_point(aes(x = magic * as.numeric(subject) - .45 - magic,
+        geom_point(aes(x = magic * as.numeric(subject) - .46 - magic,
                        y = mean_accuracy, color = subject), best, size = 3) +
         scale_x_continuous(breaks = NULL) +
         scale_fill_discrete(name = "Sujeto") +

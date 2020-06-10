@@ -275,4 +275,3 @@ for name in masks:
         else:
                 nimg = map2nifti(ds, masks[name])
         nimg.to_filename(OUTDIR + '/' + name + '.nii.gz')
-
