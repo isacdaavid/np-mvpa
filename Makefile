@@ -28,6 +28,20 @@ ZMAPS = $(shell find $(BUILD_DIR)/poststats -type f -name 'z-scores-weights-T1.n
 # poststats
 ################################################################################
 
+.PHONY : postpoststats
+postpoststats :
+	@for reduced in $$(ls $(BUILD_DIR)/pymvpa) ; do \
+	    for category in $(SRC_DIR)/pymvpa/contrasts/* ; do \
+	        cat=$$(basename "$$category") ; \
+	        out="$(BUILD_DIR)/poststats/$$reduced/$$cat/stats.csv" ; \
+	        printf "mean_p-val\tCohens_D\tcontrast" > "$$out" ; \
+	        for f in $$(find $(BUILD_DIR)/poststats/$$reduced/$$cat/ -name 'stats.csv') ; do \
+	            printf "%s\t%s\n" "$$(tail -n1 "$$f")" \
+	                   "$$(echo $${f#*/*/*/*/} | sed 's|/stats.csv||')" ; \
+	        done | sort >> "$$out" ; \
+	    done ; \
+	done ;
+
 .PHONY : poststats
 poststats :
 	@for reduced in $$(ls $(BUILD_DIR)/pymvpa) ; do \
@@ -38,9 +52,9 @@ poststats :
 	            mkdir -p "$$outdir" ; \
 	            paths=$$(find "$(BUILD_DIR)/pymvpa/$$reduced" -type d -name "$${contrast}" -printf "'%p'\n" | tr '\n' , ); \
 	            nclasses=$$(awk -F , '{print NF}' <<< "$$contrast") ; \
-	            Rscript -e "INPATH <- c($${paths::-1}) ; OUTPATH <- \"$$outdir\" ; NCLASSES <- $$nclasses ; source('$(SRC_DIR)/poststats/poststats.R')" & sleep 1m ; \
+	            Rscript -e "INPATH <- c($${paths::-1}) ; OUTPATH <- \"$$outdir\" ; NCLASSES <- $$nclasses ; source('$(SRC_DIR)/poststats/poststats.R')" & sleep 1s ; \
 	        done < "$$category" ; \
-	        sleep 5m ; \
+	        sleep 1s ; \
 	    done ; \
 	done ;
 

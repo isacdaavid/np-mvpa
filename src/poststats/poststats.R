@@ -20,29 +20,6 @@ SAMPLE_SIZE <- 150
 TIME_STEP <- 2000
 TIME_LIMIT <- 10000
 
-plot_timeseries <- function(df) {
-    best <- user_maxima(df)
-    xbreaks <- seq(0, TIME_LIMIT, TIME_STEP)
-    xlabels <- sapply(xbreaks,
-                      function(t) {if (t %% 1000 == 0) as.character(t) else ""})
-    ybreaks = c(seq(0, 1, .1), mean(df$mean_accuracy), 1/NCLASSES)
-    ylabels = c(seq(0, 1, .1), "media", "azar")
-    ggplot(df, aes(x = ms,
-                   y = mean_accuracy,
-                   group = subject,
-                   color = subject)) +
-        geom_line(aes(alpha=.01), show.legend = FALSE) +
-        geom_point(aes(x = ms, y = mean_accuracy, color = subject), best) +
-        scale_x_continuous(breaks = xbreaks, minor_breaks = NULL,
-                           labels = xlabels) +
-        scale_y_continuous(breaks = ybreaks, minor_breaks = NULL,
-                           labels = ylabels) +
-        theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
-        labs(x="Latencia estímulo-respuesta (ms)",
-             y="Exactitud de clasificación") +
-        guides(colour = FALSE)
-}
-
 plot_timeseries_2 <- function(df2, order, relative) {
     mid <- if (relative) mean(df2$mean_accuracy) else 1/NCLASSES
     xbreaks <- seq(0, TIME_LIMIT, TIME_STEP)
@@ -178,7 +155,7 @@ p_values <- function(nulls, best, bonferroni) {
 corrected_best <- function(nulls, best, bonferroni) {
     sapply(unique(best$subject), function(s) {
         h0 <- sort(nulls[nulls$subject == s, 'mean_accuracy'])
-        p <- bonferroni * 
+        p <- bonferroni *
              (length(h0[h0 >= best[best$subject == s, 'mean_accuracy']]) /
               length(h0))
         p <- min(1, p)
@@ -232,11 +209,10 @@ time_series_files <-
 null_dist_files <-
     unname(sapply(INPATH, function(x) paste0(x, '/null-dist.txt')))
 map_files <- unname(sapply(INPATH, function(x) {
-	lengths <- sapply(list.files(x, "-T1-smooth.nii.gz"), nchar)
-        file <- names(lengths[lengths == max(lengths)])
-	paste0(x, '/', file)
+    lengths <- sapply(list.files(x, "-T1-smooth.nii.gz"), nchar)
+    file <- names(lengths[lengths == max(lengths)])
+    paste0(x, '/', file)
 }))
-print(map_files)
 
 ## FIXME: don't hard-code number of digits in subject ID
 df <- do.call(rbind, lapply(time_series_files, function(file) {
@@ -262,11 +238,6 @@ best <- user_maxima(df2)
 nulls$subject <- factor(nulls$subject, levels = levels(best$subject))
 
 # plots ########################################################################
-
-## timeseries (2D overlap) with maxima
-svg(paste0(OUTPATH, '/timeseries.svg'), width = 20, height = 7)
-plot(plot_timeseries(df2))
-dev.off()
 
 ## timeseries (color surface matrix), with different row orderings
 ## including timeseries clustering
@@ -301,45 +272,16 @@ svg(paste0(OUTPATH, '/user_maxima.svg'), width = 12, height = 10)
 plot(plot_maxima_rank(best))
 dev.off()
 
-## probability distribution of maxima compared to null models
-svg(paste0(OUTPATH, '/test.svg'), width = 10, height = 10)
-plot(plot_statistical_test(nulls, best))
-dev.off()
-rm(best)
-
-## sampling_periods <- seq(max(df2$ms) / TIME_STEP, 1) * TIME_STEP
-## time_limits <- seq(0, TIME_LIMIT, TIME_STEP)
-## acc <- best_sampling(df2, sampling_periods, time_limits,
-##                      p_instead_of_acc = FALSE)
-## pval <- best_sampling(df2, sampling_periods, time_limits,
-##                       p_instead_of_acc = TRUE)
-## plot_best_sampling(acc, "Exactitud de clasificación máxima media")
-## plot_best_sampling(pval, "Valor p medio (Bonferroni)")
-## plot_best_sampling(acc / (pval+.0001), "Exactitud máxima media / valor p (Bonferroni)")
-
-## select samples with best corrected mean p-value
+## select samples with best mean accuracy
 means <- sapply(unique(df2$ms),
                 function(t) {mean(df2[df2$ms == t, "mean_accuracy"])})
 best_time <- unique(df2$ms)[match(max(means), means)]
 df3 <- df2[df2$ms == best_time, ]
 best2 <- user_maxima(df3)
 
-svg(paste0(OUTPATH, '/user_maxima-', best_time, 'ms.svg'), width = 12, height = 10)
-plot(plot_maxima_rank(best2))
-dev.off()
-
 svg(paste0(OUTPATH, '/test-', best_time, 'ms.svg'), width = 10, height = 10)
 plot(plot_statistical_test(nulls, best2))
 dev.off()
-
-## best3 <- best2
-## best3$mean_accuracy <- corrected_best(nulls, best2,
-##                                       bonferroni = length(unique(df3$ms)))
-## best3 <- best3[rev(order(best3$mean_accuracy)), ]
-## best3$subject <- as.factor(best3$subject)
-## svg(paste0(OUTPATH, '/test-corrected.svg'), width = 10, height = 10)
-## plot(plot_statistical_test(nulls, best3))
-## dev.off()
 
 pvals <- p_values(nulls, best2, length(unique(df3$ms)))
 svg(paste0(OUTPATH, '/pvalues-', best_time, '.svg'))
@@ -348,29 +290,39 @@ plot(rev(sort(pvals)), xlab = "Rango", ylab = "Valor p", main = mean_p)
 abline(.05, 0)
 abline(mean(pvals), 0, col = "red")
 dev.off()
+
+# write summary statistics CSV (mean p-val, Cohen's D)
+fileConn<-file(paste0(OUTPATH, '/stats.csv'))
+writeLines(c("mean_p-value\tcohens_D",
+             paste0(mean(pvals),
+                    "\t",
+                    round(d_cohen(best2$mean_accuracy, nulls$mean_accuracy), 3))),
+           fileConn)
+close(fileConn)
+
 rm(nulls)
 
 ## statistical maps on MNI space ###############################################
 
-gc()
-models <- lapply(map_files, function(path) readnii(path))
-mean_params <- Reduce(function(a, b) {a + b}, models) / length(models)
-models_matrix <- do.call(rbind, lapply(models, c))
-rm(models) ; gc()
-sd_params <- nifti(array(apply(models_matrix, 2, sd), dim = dim(mean_params)),
-                   dim = dim(mean_params),
-                   datatype = datatype(mean_params),
-                   pixdim = pixdim(mean_params),
-                   xyzt_units = xyzt_units(mean_params),
-                   qoffset_x = qoffset_x(mean_params),
-                   qoffset_y = qoffset_y(mean_params),
-                   qoffset_z = qoffset_z(mean_params))
-rm(models_matrix) ; gc()
-## dirty trick to fix image orientation (conversion to matrix messed it up)
-sd_params2 <- mean_params + sd_params - mean_params
-rm(sd_params) ; gc()
-z_scores <- mean_params / sd_params2
-z_scores[is.nan(z_scores)] <- 0
-writenii(mean_params, paste0(OUTPATH, '/mean-weights-T1.nii.gz'))
-writenii(sd_params2, paste0(OUTPATH, '/sd-weights-T1.nii.gz'))
-writenii(z_scores, paste0(OUTPATH, '/z-scores-weights-T1.nii.gz'))
+## gc()
+## models <- lapply(map_files, function(path) readnii(path))
+## mean_params <- Reduce(function(a, b) {a + b}, models) / length(models)
+## models_matrix <- do.call(rbind, lapply(models, c))
+## rm(models) ; gc()
+## sd_params <- nifti(array(apply(models_matrix, 2, sd), dim = dim(mean_params)),
+##                    dim = dim(mean_params),
+##                    datatype = datatype(mean_params),
+##                    pixdim = pixdim(mean_params),
+##                    xyzt_units = xyzt_units(mean_params),
+##                    qoffset_x = qoffset_x(mean_params),
+##                    qoffset_y = qoffset_y(mean_params),
+##                    qoffset_z = qoffset_z(mean_params))
+## rm(models_matrix) ; gc()
+## ## dirty trick to fix image orientation (conversion to matrix messed it up)
+## sd_params2 <- mean_params + sd_params - mean_params
+## rm(sd_params) ; gc()
+## z_scores <- mean_params / sd_params2
+## z_scores[is.nan(z_scores)] <- 0
+## writenii(mean_params, paste0(OUTPATH, '/mean-weights-T1.nii.gz'))
+## writenii(sd_params2, paste0(OUTPATH, '/sd-weights-T1.nii.gz'))
+## writenii(z_scores, paste0(OUTPATH, '/z-scores-weights-T1.nii.gz'))
