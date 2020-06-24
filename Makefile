@@ -16,13 +16,48 @@ IDS_FILE := $(DATA_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
 # memoization of IDS after $(IDS_FILE) is regenerated
 IDS = $(shell cut -d ' ' -f 1 $(IDS_FILE))
 DICOMS = $(shell find $(DATA_DIR)/xnat/images/ -type d -name DICOM | \
-                 grep -E '(FMRI|RestState|T1|T2)' | sort)
+                  grep -E '(FMRI|RestState|T1|T2)' | sort)
 VOLBRAIN_ZIPS = $(shell find $(DATA_DIR)/volbrain/ -type f -name '*.zip')
 VOLBRAIN_IMAGES = $(shell find data/volbrain/ -type f -name 'n_mmni*')
 CEREBELLUM_ATLAS := $(DATA_DIR)/atlases/Buckner_JNeurophysiol11_MNI152/Buckner2011_7Networks_MNI152_FreeSurferConformed1mm_TightMask_REORIENTED.nii.gz
 CORTICAL_ATLAS := $(DATA_DIR)/atlases/Schaefer2018_FSLMNI152_1mm/Schaefer2018_1000Parcels_7Networks_order_FSLMNI152_1mm.nii.gz
 SENSITIVITY_MAPS = $(shell find $(BUILD_DIR)/pymvpa -type f -name '*.nii.gz' | grep -v T1)
 ZMAPS = $(shell find $(BUILD_DIR)/poststats -type f -name 'z-scores-weights-T1.nii.gz')
+
+################################################################################
+# thresholded SVM map validation
+################################################################################
+
+# train classifiers based on masked NIFTIs
+.PHONY : pymvpa_whole_mask
+pymvpa_whole_mask : $(addprefix $(BUILD_DIR)/pymvpa/wholemasked/, $(IDS))
+	@echo $<
+
+$(BUILD_DIR)/pymvpa/wholemasked/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
+	@echo "running pyMVPA for $<"
+	@mask=$$(find "$(subst $(BUILD_DIR)/pymvpa/wholemasked,$(DATA_DIR)/feat,$@)" -name 'mean-weights-99th.nii.gz') ; \
+	id=$@ ; id=$${id##*/} ; \
+	for category in $(SRC_DIR)/pymvpa/contrasts/emotions ; do \
+	    while read contrast; do \
+	        outdir=$@/$$(basename $${category})/$${contrast} ; \
+	        mkdir -p "$$outdir" ; \
+	        python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" 10 ; sleep 30s ; \
+	    done < "$$category" ; \
+	done
+
+# turn mean SVM thresholded weight map into per-subject EPI-space masks
+.PHONY : deregister_mask
+deregister_mask : $(addsuffix /mean-weights-99th.nii.gz, $(addprefix $(DATA_DIR)/feat/, $(IDS)))
+	@echo
+
+%/mean-weights-99th.nii.gz : %/feat.feat/reg/highres2example_func.mat %/feat.feat/example_func.nii.gz
+	@echo 'creating brain mask $@'
+	flirt -interp nearestneighbour \
+	-in "out/poststats/whole/emotions/neutral,happy,sad,angry/mean-weights-T1-99th.nii.gz" \
+	-ref "$(subst mean-weights-99th,feat.feat/example_func,$@)" \
+	-applyxfm \
+	-init "$<" \
+	-out "$@"
 
 ################################################################################
 # poststats
@@ -34,7 +69,7 @@ postpoststats :
 	    for category in $(SRC_DIR)/pymvpa/contrasts/* ; do \
 	        cat=$$(basename "$$category") ; \
 	        out="$(BUILD_DIR)/poststats/$$reduced/$$cat/stats.csv" ; \
-	        printf "mean_p-val\tCohens_D\tcontrast" > "$$out" ; \
+	        printf "mean_p-val\tCohens_D\tcontrast\n" > "$$out" ; \
 	        for f in $$(find $(BUILD_DIR)/poststats/$$reduced/$$cat/ -name 'stats.csv') ; do \
 	            printf "%s\t%s\n" "$$(tail -n1 "$$f")" \
 	                   "$$(echo $${f#*/*/*/*/} | sed 's|/stats.csv||')" ; \
@@ -54,7 +89,7 @@ poststats :
 	            nclasses=$$(awk -F , '{print NF}' <<< "$$contrast") ; \
 	            Rscript -e "INPATH <- c($${paths::-1}) ; OUTPATH <- \"$$outdir\" ; NCLASSES <- $$nclasses ; source('$(SRC_DIR)/poststats/poststats.R')" & sleep 1s ; \
 	        done < "$$category" ; \
-	        sleep 1s ; \
+	        sleep 1m ; \
 	    done ; \
 	done ;
 
@@ -65,6 +100,7 @@ poststats :
 
 .PHONY : register_results
 register_results : $(SENSITIVITY_MAPS:.nii.gz=-T1-smooth.nii.gz)
+	@echo
 
 %-T1-smooth.nii.gz : %.nii.gz
 	@echo 'transforming to T1w space $<'
@@ -97,7 +133,7 @@ $(BUILD_DIR)/pymvpa/reduced/% : $(DATA_DIR)/pymvpa/%/atlas-means.csv $(DATA_DIR)
 	    while read contrast; do \
 	        outdir=$@/$$(basename $${category})/$${contrast} ; \
 	        mkdir -p "$$outdir" ; \
-	        fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$(word 2,$^)" "$$mask" "$$outdir" "$<" "$$contrast" & \
+	        fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$(word 2,$^)" "$$mask" "$$outdir" "$<" "$$contrast" 5000 & \
 	    done < "$$category" ; \
 	done
 
@@ -114,7 +150,7 @@ $(BUILD_DIR)/pymvpa/whole/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
 	    while read contrast; do \
 	        outdir=$@/$$(basename $${category})/$${contrast} ; \
 	        mkdir -p "$$outdir" ; \
-	        fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" & \
+	        fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" 5000 & \
 	    done < "$$category" ; \
 	done
 

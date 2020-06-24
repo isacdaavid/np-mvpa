@@ -19,6 +19,7 @@ MASK_FNAME = sys.argv[3]
 OUTDIR = sys.argv[4]
 REDUCED_BOLD_FNAME = sys.argv[5]
 CLASSES = eval("['" + re.sub(",", "','", sys.argv[6]) + "']")
+PERMUTATIONS = int(sys.argv[7]) # label permutations used to estimate null accuracy distrib
 
 STEP = 2000 # time step between different Hemodynamic Response delays (ms)
 TIME_START = 0 # first HR delay to test for (ms)
@@ -26,7 +27,6 @@ TIME_LIMIT = 10001 # maximum HR delay to test for (ms)
 SLICE_TIMING_REFERENCE = +1000 # ms
 DELAYS = range(TIME_START, TIME_LIMIT, STEP)
 
-PERMUTATIONS = 5000 # label permutations used to estimate null accuracy distrib
 ANOVA_SELECTION = 1 # proportion of features to work with
 
 # WARNING: assigning an existing pyMVPA Dataset object (or one of its attributes)
