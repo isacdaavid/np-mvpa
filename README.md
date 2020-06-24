@@ -9,8 +9,6 @@ group-level, whole-brain or ROI activation maps.
 
 ## Getting Started
 
-### Prerequisites
-
 The following binaries are expected from your `$PATH`:
 
 - typical GNU environment (`make`, `bash`, coreutils, `grep`, `sed`, `find`)
@@ -48,18 +46,16 @@ Needed libraries:
    - [rainclouds](https://github.com/RainCloudPlots/RainCloudPlots)
      may ask for additional packages
 
-### Installing
-
 ## Running
 
 1. (optional) download images from XNAT server:
 
-fill in `data/xnat/subject_metadata/fmri_subject_ids.csv` with
-patient-experiment ID rows. Then:
+   fill in `data/xnat/subject_metadata/fmri_subject_ids.csv` with
+   patient-experiment ID rows. Then:
 
-```
-make images
-```
+    ```
+    make images
+    ```
 
 2. (optional) convert DICOMs to Nifti
 
@@ -125,6 +121,7 @@ following format (or just create symlinks to a single CSV if all
 subjects performed the same task):
 
 | block start time (ms) | label name | cross-validation fold # |
+|-|-|-|
 
 8. Then specify which contrasts to try out from the label names. These
    are stored in `src/pymvpa/contrasts/`. You _must_ create at least
