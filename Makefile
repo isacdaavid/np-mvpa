@@ -7,9 +7,11 @@ BUILD_DIR := out
 SRC_DIR := src
 DATA_DIR := data
 
-.PHONY : build all
-all : build
-build : register_results
+PERMUTATIONS := 5000
+
+# .PHONY : build all
+# all : build
+# build : register_results
 
 IDS_FILE := $(DATA_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
 # note the use of the lazy assignment operator (strict evaluation) to avoid
@@ -87,9 +89,9 @@ poststats :
 	            mkdir -p "$$outdir" ; \
 	            paths=$$(find "$(BUILD_DIR)/pymvpa/$$reduced" -type d -name "$${contrast}" -printf "'%p'\n" | tr '\n' , ); \
 	            nclasses=$$(awk -F , '{print NF}' <<< "$$contrast") ; \
-	            Rscript -e "INPATH <- c($${paths::-1}) ; OUTPATH <- \"$$outdir\" ; NCLASSES <- $$nclasses ; source('$(SRC_DIR)/poststats/poststats.R')" & sleep 1s ; \
+	            Rscript -e "INPATH <- c($${paths::-1}) ; OUTPATH <- \"$$outdir\" ; NCLASSES <- $$nclasses ; source('$(SRC_DIR)/poststats/poststats.R')" & sleep 1m ; \
 	        done < "$$category" ; \
-	        sleep 1m ; \
+	        sleep 5m ; \
 	    done ; \
 	done ;
 
@@ -133,7 +135,7 @@ $(BUILD_DIR)/pymvpa/reduced/% : $(DATA_DIR)/pymvpa/%/atlas-means.csv $(DATA_DIR)
 	    while read contrast; do \
 	        outdir=$@/$$(basename $${category})/$${contrast} ; \
 	        mkdir -p "$$outdir" ; \
-	        fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$(word 2,$^)" "$$mask" "$$outdir" "$<" "$$contrast" 5000 & \
+	        fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$(word 2,$^)" "$$mask" "$$outdir" "$<" "$$contrast" $(PERMUTATIONS) & \
 	    done < "$$category" ; \
 	done
 
@@ -150,7 +152,7 @@ $(BUILD_DIR)/pymvpa/whole/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
 	    while read contrast; do \
 	        outdir=$@/$$(basename $${category})/$${contrast} ; \
 	        mkdir -p "$$outdir" ; \
-	        fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" 5000 & \
+	        fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" $(PERMUTATIONS) & \
 	    done < "$$category" ; \
 	done
 
