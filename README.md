@@ -146,7 +146,7 @@ Needed libraries:
     First-level results will go to `out/pymvpa/`
 
 10. transform resulting sensitivity maps back to T1w space, then
-denoise to improve spatial detection at group analysis:
+    denoise to improve spatial detection at group analysis:
 
    ```
    make [ -j #CORES ] register_results
@@ -158,18 +158,18 @@ denoise to improve spatial detection at group analysis:
     needed to implement automatic R environment setup across cluster
     nodes.
 
-   ```
-   make poststats
-   ```
+    ```
+    make poststats
+    ```
 
-   Results will go to `out/poststats/`
+    Results will go to `out/poststats/`
 
 12. (optional) make per-category summary CSVs with mean p-values and
     effect sizes:
 
-   ```
-   make postpoststats
-   ```
+    ```
+    make postpoststats
+    ```
 
 ## License
 
