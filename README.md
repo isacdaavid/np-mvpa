@@ -1,12 +1,23 @@
-# Neural Correlates of Emotional Perception by Multi-Voxel Pattern Analysis
+# NP-MVPA: Non-programmers' Multi-Voxel Pattern Analysis
 
-Collection of scripts to deploy a sound fMRI analysis pipeline on top
-of [pyMVPA](http://www.pymvpa.org/), with k-fold cross-validation and
-rank-based hypothesis testing. You should be able to adapt it with
-minimal effort to any task-based (block paradigm) fMRI dataset. Think
-of it as a sort of barebones FSL's Feat substitute: from DICOM ->
+Collection of scripts to deploy a vanilla-yet-sound _classification_ analysis pipeline
+for fMRI datasets, built on top of [pyMVPA](http://www.pymvpa.org/) and R.
+
+You should be able to adapt it with
+minimal effort to any task-based (block paradigm) fMRI dataset, _no programming required_. 
+Think of it as a sort of barebones FSL's Feat substitute: from DICOM ->
 NIFTI conversion and preprocessing all the way to group-level,
 whole-brain or ROI activation maps.
+
+Features:
+
+ - k-fold cross-validation
+ - p-vals and effect sizes: rank-based hypothesis testing using Montecarlo permutations
+ - only linear SVM classifiers are currently supported
+ - pretty plots (first-level and higher-level stats) and NIFTI sensibility maps
+ - simple CLI, less is more
+ - parallel processing (multi-core thanks to `make` and SGE cluster)
+ - smart build-dependency tracking to resume processing where you left, thanks to `make`
 
 Use wisely! Automation is not a substitute for methodological and
 statistical understanding.
@@ -132,11 +143,11 @@ Needed libraries:
    one contrast category file there. See provided examples.
 
 9. Train and validate classification models. Estimate accuracy
-   distribution under the null hypothesis (set inside `Makefile` to
+   distribution under the null hypothesis (currently set inside `Makefile` to
    5000 permutations and fsl_sub/SGE parallel processing cluster):
 
-   __Note__: the 5000 Montecarlo simulations can take long!, but you want
-   at least a few thousand.
+   __Note__: the 5000 Montecarlo simulations can take long!, but you still want
+   at least a few thousand of them for accurate results.
 
    ```
    make pymvpa_whole
