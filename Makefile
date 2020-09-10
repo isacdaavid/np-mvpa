@@ -7,7 +7,8 @@ BUILD_DIR := out
 SRC_DIR := src
 DATA_DIR := data
 
-PERMUTATIONS := 5000
+TASKNAME := emotionalfaces
+PERMUTATIONS := 5
 
 # .PHONY : build all
 # all : build
@@ -16,7 +17,7 @@ PERMUTATIONS := 5000
 IDS_FILE := $(DATA_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
 # note the use of the lazy assignment operator (strict evaluation) to avoid
 # memoization of IDS after $(IDS_FILE) is regenerated
-IDS = $(shell cut -d ' ' -f 1 $(IDS_FILE))
+IDS = $(shell find $(DATA_DIR)/bids/ -maxdepth 1 -type d -name 'sub-*' | sort | cut -d '-' -f 2)
 DICOMS = $(shell find $(DATA_DIR)/xnat/images/ -type d -name DICOM | \
                   grep -E '(FMRI|RestState|T1|T2)' | sort)
 VOLBRAIN_ZIPS = $(shell find $(DATA_DIR)/volbrain/ -type f -name '*.zip')
@@ -43,7 +44,7 @@ $(BUILD_DIR)/pymvpa/wholemasked/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.g
 	    while read contrast; do \
 	        outdir=$@/$$(basename $${category})/$${contrast} ; \
 	        mkdir -p "$$outdir" ; \
-	        python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" 10 ; sleep 30s ; \
+	        python2 "$(SRC_DIR)/pymvpa/main.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" 10 ; sleep 30s ; \
 	    done < "$$category" ; \
 	done
 
@@ -135,7 +136,7 @@ $(BUILD_DIR)/pymvpa/reduced/% : $(DATA_DIR)/pymvpa/%/atlas-means.csv $(DATA_DIR)
 	    while read contrast; do \
 	        outdir=$@/$$(basename $${category})/$${contrast} ; \
 	        mkdir -p "$$outdir" ; \
-	        fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$(word 2,$^)" "$$mask" "$$outdir" "$<" "$$contrast" $(PERMUTATIONS) & \
+	        fsl_sub python2 "$(SRC_DIR)/pymvpa/main.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$(word 2,$^)" "$$mask" "$$outdir" "$<" "$$contrast" $(PERMUTATIONS) & \
 	    done < "$$category" ; \
 	done
 
@@ -148,11 +149,11 @@ $(BUILD_DIR)/pymvpa/whole/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
 	@echo "running pyMVPA for $<"
 	@mask=$$(find "$(subst $(BUILD_DIR)/pymvpa/whole,$(DATA_DIR)/feat,$@)" -name 'volbrain-mask.tmp.nii.gz') ; \
 	id=$@ ; id=$${id##*/} ; \
-	for category in $(SRC_DIR)/pymvpa/contrasts/* ; do \
+	for category in $(SRC_DIR)/pymvpa/contrasts/faces ; do \
 	    while read contrast; do \
 	        outdir=$@/$$(basename $${category})/$${contrast} ; \
 	        mkdir -p "$$outdir" ; \
-	        fsl_sub python2 "$(SRC_DIR)/pymvpa/pymvpa.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" $(PERMUTATIONS) & \
+	        python2 "$(SRC_DIR)/pymvpa/main.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" $(PERMUTATIONS) & \
 	    done < "$$category" ; \
 	done
 
@@ -301,10 +302,10 @@ $(DATA_DIR)/feat/%/feat.feat : $(DATA_DIR)/pymvpa/%/concat.nii.gz
 concatenate : $(addsuffix /concat.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
 	@echo
 
-$(DATA_DIR)/pymvpa/%/concat.nii.gz : $(DATA_DIR)/xnat/images/%
+$(DATA_DIR)/pymvpa/%/concat.nii.gz : $(DATA_DIR)/bids/sub-%/func
 	@echo 'concatenating fMRI series into $@'
 	@dir=$@ ; mkdir -p "$${dir%/*}" ; \
-	fmris=($$(find "$<" -type f -name '*nifti.nii.gz' | grep 'tr_FMRI' | sort --version-sort)) ; \
+	fmris=($$(find "$<" -type f -name '*bold.nii.gz' | grep 'task-$(TASKNAME)' | sort --version-sort)) ; \
 	python2 "$(SRC_DIR)/pymvpa/concatenate.py" "$@" $${fmris[@]} > /dev/null 2>&1
 	@fsledithd "$@" "$(SRC_DIR)/fix-nifti-units.sh"
 
@@ -313,7 +314,7 @@ $(DATA_DIR)/pymvpa/%/concat.nii.gz : $(DATA_DIR)/xnat/images/%
 ################################################################################
 
 # FIXME: requires manual upload/download from https://volbrain.upv.es
-#        reimplement with freesurfer?
+#        Reimplement with freesurfer?
 
 .PHONY : t1w_brain_extraction
 t1w_brain_extraction : $(VOLBRAIN_IMAGES:.nii=_brain.nii.gz)
@@ -341,16 +342,16 @@ $(DATA_DIR)/volbrain/%/ :
 	@mkdir -p "$@"
 
 ################################################################################
-# convert DICOMs to Nifti
+# convert DICOMs to Nifti and BIDS
 ################################################################################
 
 .PHONY : nifti
-nifti : images $(DICOMS:DICOM=nifti.nii.gz)
+nifti : images # $(DICOMS:DICOM=nifti.nii.gz)
 	@echo
 
 %nifti.nii.gz : %DICOM
 	@echo 'building $@'
-	@dcm2niix -f 'nifti' -g y -i y -t y -z y "$</.." > /dev/null
+	@dcm2niix -f 'nifti' -g y -i y -t n -z y "$</.." > /dev/null
 
 ################################################################################
 # xnat DICOMs: download, unzip. DO NOT PARALLELIZE (don't run with -j )

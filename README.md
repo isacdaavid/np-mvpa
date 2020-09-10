@@ -1,23 +1,26 @@
 # NP-MVPA: Non-programmers' Multi-Voxel Pattern Analysis
 
-Collection of scripts to deploy a vanilla-yet-sound _classification_ analysis pipeline
-for fMRI datasets, built on top of [pyMVPA](http://www.pymvpa.org/) and R.
+Collection of scripts to deploy a vanilla-yet-sound _classification_
+and _RSA_ analysis pipeline for fMRI datasets, built on top of
+[pyMVPA](http://www.pymvpa.org/) and R.
 
 You should be able to adapt it with
-minimal effort to any task-based (block paradigm) fMRI dataset, _no programming required_. 
+minimal effort to any task-based (block paradigm) fMRI dataset, _no programming required_.
 Think of it as a sort of barebones FSL's Feat substitute: from DICOM ->
 NIFTI conversion and preprocessing all the way to group-level,
 whole-brain or ROI activation maps.
 
 Features:
 
- - k-fold cross-validation
+ - [BIDS](https://bids.neuroimaging.io/)-compatible! (task TSVs coming soon)
+ - flexible k-fold cross-validation
  - p-vals and effect sizes: rank-based hypothesis testing using Montecarlo permutations
+ - simple Representational Symilarity Analysis (Pearson correlation and Euclidean distance matrices)
  - only linear SVM classifiers are currently supported
  - pretty plots (first-level and higher-level stats) and NIFTI sensibility maps
- - simple CLI, less is more
- - parallel processing (multi-core thanks to `make` and SGE cluster)
- - smart build-dependency tracking to resume processing where you left, thanks to `make`
+ - simple CLI, because less is more
+ - easy to parallelize for multiple subjects (multi-core thanks to `make`, optionally scale to SGE cluster for critical parts)
+ - smart build-dependency tracking to resume processing where you left it, thanks to `make`
 
 Use wisely! Automation is not a substitute for methodological and
 statistical understanding.
@@ -63,7 +66,7 @@ Needed libraries:
 
 ## Running
 
-1. (optional) download images from XNAT server:
+0. (optional) download images from XNAT server:
 
    fill in `data/xnat/subject_metadata/fmri_subject_ids.csv` with
    patient-experiment ID rows. Then:
@@ -72,11 +75,13 @@ Needed libraries:
     make images
     ```
 
-2. (optional) convert DICOMs to Nifti
+1. (optional) convert DICOMs to Nifti
 
    ```
    make [ -j #CORES ] nifti
    ```
+
+2. 
 
 3. obtain gray-matter segmentation masks (currently depends on SaaSS
    [volBrain](https://www.volbrain.upv.es/))
@@ -159,9 +164,9 @@ Needed libraries:
 10. transform resulting sensitivity maps back to T1w space, then
     denoise to improve spatial detection at group analysis:
 
-   ```
-   make [ -j #CORES ] register_results
-   ```
+    ```
+    make [ -j #CORES ] register_results
+    ```
 
 11. Ask R to perform group-level inference and compose pretty plots
     (one test per contrast). Note this is set to run on the __local

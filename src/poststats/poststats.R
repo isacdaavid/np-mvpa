@@ -17,6 +17,7 @@ library(effsize)      # Cohen's D
 ## OUTPATH <- 'out/poststats/contrast1/'
 ## NCLASSES <- 3
 
+# TODO: don't hard-code. infer from file
 SAMPLE_SIZE <- 150
 TIME_STEP <- 2000
 TIME_LIMIT <- 10000
@@ -221,9 +222,8 @@ map_files <- unname(sapply(INPATH, function(x) {
 df <- do.call(rbind, lapply(time_series_files, function(file) {
     df <- read.csv(file, header = FALSE, sep = " ")
     subject <- as.factor(regmatches(file, regexpr("\\d{5}", file)))
-    cbind(df, rep(subject, nrow(df)), 0:(nrow(df) - 1) * TIME_STEP)
+    cbind(df, subject = rep(subject, nrow(df)))
 }))
-names(df) <- c("sample_size", "mean_accuracy", "voxel_prop", "subject", "ms")
 
 nulls <- do.call(rbind, lapply(null_dist_files, function(file) {
     df <- read.csv(file, header = FALSE, sep = " ")
