@@ -12,24 +12,24 @@ import re
 from mvpa2.suite import *
 
 # local imports
-from rsa import *
+from libmvpa import *
 
 ATTR_FNAME = "../../data/psychopy/01.csv"
 BOLD_FNAME = "../../data/pymvpa/01/concat-brain-norm.nii.gz"
 MASK_FNAME = "../../data/feat/01/volbrain-mask.tmp.nii.gz"
 OUTDIR = "../../out/pymvpa/whole/01/faces/scrambled,neutral"
 REDUCED_BOLD_FNAME = "../../data/pymvpa/01/concat-brain-norm.nii.gz"
-CLASSES = ["scrambled", "neutral"]
-PERMUTATIONS = 5
+CLASSES = ['scrambled', 'neutral'] # ["happy", "angry", "sad"]
+PERMUTATIONS = 1
 
-# arguments passed to script
-ATTR_FNAME = sys.argv[1]
-BOLD_FNAME = sys.argv[2]
-MASK_FNAME = sys.argv[3]
-OUTDIR = sys.argv[4]
-REDUCED_BOLD_FNAME = sys.argv[5]
-CLASSES = eval("['" + re.sub(",", "','", sys.argv[6]) + "']")
-PERMUTATIONS = int(sys.argv[7])
+# # arguments passed to script
+# ATTR_FNAME = sys.argv[1]
+# BOLD_FNAME = sys.argv[2]
+# MASK_FNAME = sys.argv[3]
+# OUTDIR = sys.argv[4]
+# REDUCED_BOLD_FNAME = sys.argv[5]
+# CLASSES = eval("['" + re.sub(",", "','", sys.argv[6]) + "']")
+# PERMUTATIONS = int(sys.argv[7])
 
 # other global constants
 STEP = 2000 # time step between different Hemodynamic Response delays (ms)
@@ -54,7 +54,7 @@ attr = SampleAttributes(ATTR_FNAME,
 
 result_dist = []
 fo = open(OUTDIR + "/result-time-series.txt", "w+")
-fo.writelines("sample_size mean_accuracy voxel_prop ms\n")
+fo.writelines("sample_size mean_accuracy voxel_prop ms fold_accuracies\n")
 
 for delay in DELAYS:
         orig = fmri_dataset(BOLD_FNAME, mask = MASK_FNAME)
@@ -68,20 +68,26 @@ for delay in DELAYS:
         model,validator = train(ANOVA_SELECTION)
         results = validator(ds3)
         result_dist.append(np.mean(results))
-        masks = sensitivity_maps(model, ds3, CLASSES)
+        masks = sensitivity_maps(sensitivity_maps_aux(model, ds), CLASSES)
         name = sanitize_mask_name(str(sorted(CLASSES)))
+        accuracies = ','.join([str(x) for x in np.ravel(results.samples)])
         line = str(ds3.nsamples / len(CLASSES)) + " " + str(np.mean(results)) \
                + " " + str(non_empty_weights_proportion(masks[name])) + " " \
-               + str(delay) + "\n"
+               + str(delay) + " " + accuracies + "\n"
         fo.writelines(line)
         print(str(delay)+"/"+str(DELAYS[-1])+" ms : acc "+str(np.mean(results)))
 
 fo.close()
 
 plt.plot(result_dist)
+plt.xlabel('labeling delay')
+plt.ylabel('mean cross-validated classification accuracy')
 plt.savefig(OUTDIR + '/result-time-series.svg')
 plt.close()
+
 plt.hist(result_dist, bins = 1000)
+plt.xlabel('mean cross-validated classification accuracy')
+plt.ylabel('frequency')
 plt.savefig(OUTDIR + '/result-dist.svg')
 plt.close()
 
@@ -101,19 +107,27 @@ ds3 = subsample(ds2, CLASSES)
 ds4 = vstack([ds3[{'label': [l]}] for l in CLASSES])
 plot_RSA_matrix(pattern = RSA_matrix(ds4.samples, distance = "euclidean"),
                 labels = ds4.sa.label,
-                path = OUTDIR + '/rsa_euclidean')
+                path = OUTDIR + '/RSA_euclidean')
 plot_RSA_matrix(RSA_matrix(ds4.samples - np.mean(ds4.samples, axis = 0),
                            distance = "pearson"),
                 ds4.sa.label,
-                OUTDIR + '/rsa_pearson')
+                OUTDIR + '/RSA_pearson')
 
 # null accuracy estimation using Monte-Carlo method
-model,validator = null_cv(PERMUTATIONS, ANOVA_SELECTION)
+oldmodel,oldvalidator = train(ANOVA_SELECTION)
+oldresults = validator(ds3)
+masks = sensitivity_maps(sensitivity_maps_aux(oldmodel, ds3), CLASSES)
+model,validator,pvals = null_cv(PERMUTATIONS, CLASSES, masks, ANOVA_SELECTION)
 results = validator(ds3)
+pvals = {k : pvals[k] / (PERMUTATIONS * max(ds3.sa.block)) for k in pvals.keys()}
 
-fo = open(OUTDIR + "/conf-matrix.txt", "w+")
+fo = open(OUTDIR + "/conf-matrix-stats.txt", "w+")
 fo.writelines(validator.ca.stats.as_string(description = True))
 fo.close()
+
+np.savetxt(OUTDIR + "/conf-matrix.csv",
+           validator.ca.stats._ConfusionMatrix__matrix,
+           header = ' '.join(validator.ca.stats._ConfusionMatrix__labels))
 
 validator.ca.stats.plot()
 plt.savefig(OUTDIR + '/conf-matrix.svg')
@@ -124,15 +138,21 @@ fo.writelines("\n".join(str(i) \
         for i in validator.null_dist.ca.dist_samples.samples.tolist()[0][0]))
 fo.close()
 
-make_null_dist_plot(np.ravel(validator.null_dist.ca.dist_samples),
-                    np.mean(results),
-                    len(CLASSES))
+plt.hist(np.ravel(validator.null_dist.ca.dist_samples),
+         bins = 100, normed = True, alpha = 0.8)
+plt.axvline(np.mean(results), color='red')
+# a priori chance-level
+plt.axvline(1.0 / len(CLASSES), color='black', ls='--')
+# scale x-axis to full range of possible error values
+plt.xlim(0,1)
+plt.xlabel('mean cross-validated classification accuracy')
+plt.ylabel('frequency')
 plt.savefig(OUTDIR + '/null-dist.svg')
 plt.close()
 
 # sensitivity maps #############################################################
 
-masks = sensitivity_maps(model, ds3, CLASSES)
+masks = sensitivity_maps(sensitivity_maps_aux(model, ds), CLASSES)
 all_weights = masks[sanitize_mask_name(str(sorted(CLASSES)))]
 
 # distribution of non-zero weights, normalized to the maximum one
@@ -140,15 +160,23 @@ plt.hist(all_weights[all_weights != 0] / max(all_weights), bins = 50)
 plt.savefig(OUTDIR + '/weights-dist.svg')
 plt.close()
 
-# export sensitivity maps
+# export sensitivity maps and p-value maps
 for name in masks:
         if REDUCED_BOLD_FNAME != BOLD_FNAME :
-                parcellation = fmri_dataset(MASK_FNAME)
-                parcellation.samples = parcellation.samples.astype(float)
+                # load copies of parcellation to pour our values in
+                parcells_s = fmri_dataset(MASK_FNAME)
+                parcells_p = fmri_dataset(MASK_FNAME)
+                parcells_s.samples = parcells_s.samples.astype(float)
+                parcells_p.samples = parcells_p.samples.astype(float)
                 for i in range(0, len(masks[name])):
-                        parcellation.samples[parcellation.samples == i + 1] = \
+                        parcells_s.samples[parcells_s.samples == i + 1] = \
                                 masks[name][i]
-                nimg = map2nifti(parcellation)
+                        parcells_p.samples[parcells_p.samples == i + 1] = \
+                                pvals[name][i]
+                nimg_s = map2nifti(parcells_s)
+                nimg_p = map2nifti(parcells_p)
         else:
-                nimg = map2nifti(ds, masks[name])
-        nimg.to_filename(OUTDIR + '/' + name + '.nii.gz')
+                nimg_s = map2nifti(ds, masks[name])
+                nimg_p = map2nifti(ds, pvals[name])
+        nimg_s.to_filename(OUTDIR + '/' + name + '-weights.nii.gz')
+        nimg_p.to_filename(OUTDIR + '/' + name + '-raw_pvals.nii.gz')

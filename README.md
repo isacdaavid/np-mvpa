@@ -81,7 +81,8 @@ Needed libraries:
    make [ -j #CORES ] nifti
    ```
 
-2. 
+2. Place your BIDS dataset inside `data/bids/` and fill in `TASKNAME`
+   in the `Makefile`
 
 3. obtain gray-matter segmentation masks (currently depends on SaaSS
    [volBrain](https://www.volbrain.upv.es/))

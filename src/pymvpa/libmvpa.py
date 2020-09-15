@@ -83,7 +83,13 @@ def train(anova_selection):
 # Monte-Carlo null hypothesis estimation
 ################################################################################
 
-def null_cv(permutations, anova_selection = 1.0):
+def null_cv(permutations, classes, weights, anova_selection = 1.0):
+        global PERMUTATIONS, PERMUTED_FOLD, PVALS, CLASSES, WEIGHTS
+        PERMUTATIONS = permutations
+        CLASSES = classes
+        WEIGHTS = weights
+        PERMUTED_FOLD = 0
+        PVALS = {k : np.zeros(weights[k].shape[0])for k in weights.keys()}
         repeater = Repeater(count = permutations)
         permutator = AttributePermutator('targets',
                                          limit={'partitions': 1}, count = 1)
@@ -99,7 +105,8 @@ def null_cv(permutations, anova_selection = 1.0):
                              ChainNode([partitioner, permutator],
                                        space = partitioner.get_space()),
                              errorfx = lambda p, t: np.mean(p == t),
-                             postproc = mean_sample())
+                             postproc = mean_sample(),
+                             callback = p_vals_map)
         distr_est = MCNullDist(repeater, tail = 'right',
                                measure = cv,
                                enable_ca = ['dist_samples'])
@@ -109,52 +116,30 @@ def null_cv(permutations, anova_selection = 1.0):
                                 postproc = mean_sample(),
                                 null_dist = distr_est,
                                 enable_ca = ['stats'])
-        return fclf,cv_mc
+        return fclf,cv_mc,PVALS
 
-def make_null_dist_plot(dist_samples, empirical, nclasses):
-     pl.hist(dist_samples, bins = 100, normed = True, alpha = 0.8)
-     pl.axvline(empirical, color='red')
-     # a priori chance-level
-     pl.axvline(1.0 / nclasses, color='black', ls='--')
-     # scale x-axis to full range of possible error values
-     pl.xlim(0,1)
-     pl.xlabel('Average cross-validated classification error')
+def p_vals_map(data, node, result):
+    global PERMUTATIONS, PERMUTED_FOLD, PVALS, CLASSES, WEIGHTS
+    PERMUTED_FOLD += 1
+    if PERMUTED_FOLD % max(data.sa.block) == 0:
+        permutation = PERMUTED_FOLD / max(data.sa.block)
+        print "permutation {0}/{1}\r".format(permutation, PERMUTATIONS),
+        if permutation == PERMUTATIONS:
+            print("")
+    nullmap = sensitivity_maps(sensitivity_maps_aux(node.measure, data), CLASSES)
+    for k in WEIGHTS.keys():
+        PVALS[k] += WEIGHTS[k] >= nullmap[k]
 
 ################################################################################
 # sensitivity analysis
 ################################################################################
 
-# - remove sign (there's no interpretation to feature-importance direction in
-#   the orthogonal vector to SVM hyperplane, other than encoding class)
-# - L2-normalize to make sure vector sum is meaningful
-# - sum
-# - rescale to maximum weight (summed masks will be comparable operators)
-# - optionally, return n most significant weights
-def normalize_weights(weight_lists, significance = 1):
-        for i in range(0, len(weight_lists)):
-                weight_lists[i] = l2_normed(abs(weight_lists[i]))
-        if len(weight_lists) > 1:
-                total = np.sum(weight_lists, axis = 0)
-        else:
-                total = weight_lists[0]
-        total /= max(total)
-        ntile = np.sort(total)[-int(round(len(total) * significance))]
-        return np.array([(0 if (x < ntile) else x) for x in total])
-
 def sensitivity_maps_aux(model, ds):
-        analyzer = model.get_sensitivity_analyzer()
+        analyzer = model.get_sensitivity_analyzer(force_train = False)
         return analyzer(ds)
 
-def powerset(iterable):
-        s = list(iterable)
-        return chain.from_iterable(combinations(s, r) for r in range(2, len(s) + 1))
-
-def sanitize_mask_name(string):
-        return re.sub("[' \[\]]", '', string)
-
 # outputs the computed "activation" maps (rather, sensitivity masks)
-def sensitivity_maps(model, ds, classes):
-        sens = sensitivity_maps_aux(model, ds)
+def sensitivity_maps(sens, classes):
         masks = dict()
         for comb in powerset(classes):
                 subset_pairs = []
@@ -164,6 +149,28 @@ def sensitivity_maps(model, ds, classes):
                 name = sanitize_mask_name(str(sorted(comb)))
                 masks[name] = normalize_weights(np.array(subset_pairs))
         return masks
+
+# - remove sign (there's no interpretation to feature-importance direction in
+#   the orthogonal vector to SVM hyperplane, other than encoding class)
+# - L2-normalize to make sure vector sum is meaningful
+# - sum
+# - optionally, return n most significant weights
+def normalize_weights(weight_lists, significance = 1):
+        for i in range(0, len(weight_lists)):
+                weight_lists[i] = l2_normed(abs(weight_lists[i]))
+        if len(weight_lists) > 1:
+                total = np.sum(weight_lists, axis = 0)
+        else:
+                total = weight_lists[0]
+        ntile = np.sort(total)[-int(round(len(total) * significance))]
+        return np.array([(0 if (x < ntile) else x) for x in total])
+
+def powerset(iterable):
+        s = list(iterable)
+        return chain.from_iterable(combinations(s, r) for r in range(2, len(s) + 1))
+
+def sanitize_mask_name(string):
+        return re.sub("[' \[\]]", '', string)
 
 # percentage of voxels with non-zero weights
 def non_empty_weights_proportion(weights):
@@ -197,10 +204,7 @@ def plot_RSA_matrix(pattern, labels, path):
       labels (ndarray): labels vector in the same order as in `pattern`
       path (string): file name where to save path.svg and path.csv matrices
     """
-    maxlen = len(np.array2string(labels))
-    header = filter(lambda ch: ch not in "[]",
-                    np.array2string(labels, max_line_width = maxlen))
-    np.savetxt(path + ".csv", pattern, header = header)
+    np.savetxt(path + ".csv", pattern, header = ' '.join(labels))
     counts = np.unique(labels, return_counts = True)
     classes = counts[0]
     classes_counts = counts[1]
