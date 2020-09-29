@@ -13,8 +13,11 @@ set fmri(level) 1
 # Which stages to run
 # 0 : No first-level analysis (registration and/or group stats only)
 # 7 : Full first-level analysis
-# 1 : Pre-processing
-# 2 : Statistics
+# 1 : Pre-Stats
+# 3 : Pre-Stats + Stats
+# 2 :             Stats
+# 6 :             Stats + Post-stats
+# 4 :                     Post-stats
 set fmri(analysis) 1
 
 # Use relative filenames
@@ -36,7 +39,7 @@ set fmri(outputdir) "MVPA_OUTPUTDIR"
 set fmri(tr) 2.000000
 
 # Total volumes
-set fmri(npts) "MVPA_NVOLS"
+set fmri(npts) MVPA_NVOLS
 
 # Delete volumes
 set fmri(ndelete) 0
@@ -66,6 +69,11 @@ set fmri(noise) 0.66
 
 # Noise AR(1)
 set fmri(noisear) 0.34
+
+# Post-stats-only directory copying
+# 0 : Overwrite original post-stats results
+# 1 : Copy original FEAT directory for new Contrasts, Thresholding, Rendering
+set fmri(newdir_yn) 0
 
 # Motion correction
 # 0 : None
@@ -208,6 +216,9 @@ set fmri(bgimage) 1
 # Create time series plots
 set fmri(tsplot_yn) 1
 
+# Registration?
+set fmri(reg_yn) 1
+
 # Registration to initial structural
 set fmri(reginitial_highres_yn) 0
 
@@ -233,13 +244,13 @@ set fmri(reghighres_search) 90
 set fmri(reghighres_dof) 12
 
 # Registration to standard image?
-set fmri(regstandard_yn) 0
+set fmri(regstandard_yn) 1
 
 # Use alternate reference images?
 set fmri(alternateReference_yn) 0
 
 # Standard image
-set fmri(regstandard) "/home/inb/lconcha/fmrilab_software/fsl_5.0.9/data/standard/MNI152_T1_2mm_brain"
+set fmri(regstandard) "/home/inb/lconcha/fmrilab_software/fsl_5.0.9/data/standard/MNI152_T1_1mm_brain"
 
 # Search space for registration to standard space
 # 0   : No search
