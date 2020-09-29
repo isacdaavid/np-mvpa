@@ -9,7 +9,7 @@ DATA_DIR := data
 
 TASKNAME := emotionalfaces
 RUNS := 5
-PERMUTATIONS := 2
+PERMUTATIONS := 5000
 
 # .PHONY : build all
 # all : build

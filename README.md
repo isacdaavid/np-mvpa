@@ -128,7 +128,9 @@ Needed libraries:
    make [ -j #CORES ] atlas_means
    ```
 
-6. More prepro: linearly detrend and normalize signals:
+6. More prepro: adjust for the number of fMRI `RUNS` inside the
+   `Makefile` (this currently **assumes all runs have the same number
+   of volumes**), then linearly detrend and normalize signals:
 
    ```
    make [ -j #CORES ] detrend_normalize
