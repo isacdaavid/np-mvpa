@@ -66,15 +66,16 @@ def subsample(ds0, classes):
         ds1.sa['targets'] = ds1.sa.label # this is the label/target attribute
         return ds1
 
-def train(anova_selection):
-        clf = LinearCSVMC()
+def train(anova_selection, C = -1.0):
+        clf = LinearCSVMC(C = C)
         fsel = SensitivityBasedFeatureSelection(
                         OneWayAnova(),
                         FractionTailSelector(anova_selection,
                                              mode = 'select',
                                              tail = 'upper'))
         fclf = FeatureSelectionClassifier(clf, fsel)
-        cv = CrossValidation(fclf, NFoldPartitioner(attr = 'block'),
+        cv = CrossValidation(fclf,
+                             NFoldPartitioner(attr = 'block'),
                              errorfx = lambda p, t: np.mean(p == t),
                              enable_ca=['stats'])
         return fclf,cv
@@ -83,17 +84,18 @@ def train(anova_selection):
 # Monte-Carlo null hypothesis estimation
 ################################################################################
 
-def null_cv(permutations, classes, weights, anova_selection = 1.0):
-        global PERMUTATIONS, PERMUTED_FOLD, PVALS, CLASSES, WEIGHTS
+def null_cv(permutations, classes, weights, anova_selection = 1.0, C = -1.0):
+        global PERMUTATIONS, PERMUTED_FOLD, PVALS, SVM_MAX, CLASSES, WEIGHTS
         PERMUTATIONS = permutations
         CLASSES = classes
         WEIGHTS = weights
         PERMUTED_FOLD = 0
-        PVALS = {k : np.zeros(weights[k].shape[0])for k in weights.keys()}
+        PVALS = {k : np.zeros(weights[k].shape[0]) for k in weights.keys()}
+        SVM_MAX = {k : [] for k in weights.keys()}
         repeater = Repeater(count = permutations)
         permutator = AttributePermutator('targets',
                                          limit={'partitions': 1}, count = 1)
-        clf = LinearCSVMC()
+        clf = LinearCSVMC(C = C)
         fsel = SensitivityBasedFeatureSelection(
                         OneWayAnova(),
                         FractionTailSelector(anova_selection,
@@ -116,19 +118,21 @@ def null_cv(permutations, classes, weights, anova_selection = 1.0):
                                 postproc = mean_sample(),
                                 null_dist = distr_est,
                                 enable_ca = ['stats'])
-        return fclf,cv_mc,PVALS
+        return fclf,cv_mc,PVALS,SVM_MAX
 
 def p_vals_map(data, node, result):
-    global PERMUTATIONS, PERMUTED_FOLD, PVALS, CLASSES, WEIGHTS
+    global PERMUTATIONS, PERMUTED_FOLD, PVALS, SVM_MAX, CLASSES, WEIGHTS
     PERMUTED_FOLD += 1
     if PERMUTED_FOLD % max(data.sa.block) == 0:
         permutation = PERMUTED_FOLD / max(data.sa.block)
         print "permutation {0}/{1}\r".format(permutation, PERMUTATIONS),
         if permutation == PERMUTATIONS:
             print("")
-    nullmap = sensitivity_maps(sensitivity_maps_aux(node.measure, data), CLASSES)
+    nullmap = sensitivity_maps(sensitivity_maps_aux(node.measure, data),
+                               CLASSES)
     for k in WEIGHTS.keys():
-        PVALS[k] += WEIGHTS[k] >= nullmap[k]
+        PVALS[k] += abs(nullmap[k]) >= abs(WEIGHTS[k])
+        SVM_MAX[k].append(max(abs(nullmap[k])))
 
 ################################################################################
 # sensitivity analysis
@@ -150,14 +154,12 @@ def sensitivity_maps(sens, classes):
                 masks[name] = normalize_weights(np.array(subset_pairs))
         return masks
 
-# - remove sign (there's no interpretation to feature-importance direction in
-#   the orthogonal vector to SVM hyperplane, other than encoding class)
 # - L2-normalize to make sure vector sum is meaningful
 # - sum
 # - optionally, return n most significant weights
 def normalize_weights(weight_lists, significance = 1):
         for i in range(0, len(weight_lists)):
-                weight_lists[i] = l2_normed(abs(weight_lists[i]))
+                weight_lists[i] = l2_normed(weight_lists[i])
         if len(weight_lists) > 1:
                 total = np.sum(weight_lists, axis = 0)
         else:
@@ -204,7 +206,7 @@ def plot_RSA_matrix(pattern, labels, path):
       labels (ndarray): labels vector in the same order as in `pattern`
       path (string): file name where to save path.svg and path.csv matrices
     """
-    np.savetxt(path + ".csv", pattern, header = ' '.join(labels))
+    np.savetxt(path + ".csv", pattern, header = ' '.join(labels), fmt='%10.5f')
     counts = np.unique(labels, return_counts = True)
     classes = counts[0]
     classes_counts = counts[1]

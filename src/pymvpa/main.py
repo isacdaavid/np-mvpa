@@ -14,22 +14,22 @@ from mvpa2.suite import *
 # local imports
 from libmvpa import *
 
-ATTR_FNAME = "../../data/psychopy/01.csv"
-BOLD_FNAME = "../../data/pymvpa/01/concat-brain-norm.nii.gz"
-MASK_FNAME = "../../data/feat/01/volbrain-mask.tmp.nii.gz"
-OUTDIR = "../../out/pymvpa/whole/01/faces/scrambled,neutral"
-REDUCED_BOLD_FNAME = "../../data/pymvpa/01/concat-brain-norm.nii.gz"
-CLASSES = ['scrambled', 'neutral'] # ["happy", "angry", "sad"]
-PERMUTATIONS = 1
+# ATTR_FNAME = "../../data/psychopy/01.csv"
+# BOLD_FNAME = "../../data/pymvpa/01/concat-brain-norm.nii.gz"
+# MASK_FNAME = "../../data/feat/01/volbrain-mask.tmp.nii.gz"
+# OUTDIR = "../../out/pymvpa/whole/01/faces/scrambled,neutral"
+# REDUCED_BOLD_FNAME = "../../data/pymvpa/01/concat-brain-norm.nii.gz"
+# CLASSES = ['scrambled', 'neutral']
+# PERMUTATIONS = 1
 
-# # arguments passed to script
-# ATTR_FNAME = sys.argv[1]
-# BOLD_FNAME = sys.argv[2]
-# MASK_FNAME = sys.argv[3]
-# OUTDIR = sys.argv[4]
-# REDUCED_BOLD_FNAME = sys.argv[5]
-# CLASSES = eval("['" + re.sub(",", "','", sys.argv[6]) + "']")
-# PERMUTATIONS = int(sys.argv[7])
+# arguments passed to script
+ATTR_FNAME = sys.argv[1]
+BOLD_FNAME = sys.argv[2]
+MASK_FNAME = sys.argv[3]
+OUTDIR = sys.argv[4]
+REDUCED_BOLD_FNAME = sys.argv[5]
+CLASSES = eval("['" + re.sub(",", "','", sys.argv[6]) + "']")
+PERMUTATIONS = int(sys.argv[7])
 
 # other global constants
 STEP = 2000 # time step between different Hemodynamic Response delays (ms)
@@ -53,7 +53,7 @@ attr = SampleAttributes(ATTR_FNAME,
                         header = ['onset_time', 'label', 'block'])
 
 result_dist = []
-fo = open(OUTDIR + "/result-time-series.txt", "w+")
+fo = open(OUTDIR + "/result-time-series.csv", "w+")
 fo.writelines("sample_size mean_accuracy voxel_prop ms fold_accuracies\n")
 
 for delay in DELAYS:
@@ -100,7 +100,7 @@ if REDUCED_BOLD_FNAME != BOLD_FNAME :
         # load low-dimensional version of dataset
         ds = Dataset(np.genfromtxt(REDUCED_BOLD_FNAME, delimiter=' '))
         ds.sa = orig.sa
-ds2 = label(ds, attr, SLICE_TIMING_REFERENCE, optimal_delay)
+ds2 = label(ds, attr, SLICE_TIMING_REFERENCE, 4000)
 ds3 = subsample(ds2, CLASSES)
 
 # representation similarity analysis
@@ -113,13 +113,32 @@ plot_RSA_matrix(RSA_matrix(ds4.samples - np.mean(ds4.samples, axis = 0),
                 ds4.sa.label,
                 OUTDIR + '/RSA_pearson')
 
-# null accuracy estimation using Monte-Carlo method
-oldmodel,oldvalidator = train(ANOVA_SELECTION)
-oldresults = validator(ds3)
+# tune regularizing hyperparameter 'C'
+hyper = []
+cees = [1, .1, .01, .001, .0001, -1]
+for c in cees:
+        oldmodel,oldvalidator = train(ANOVA_SELECTION, C = c)
+        oldresults = oldvalidator(ds3)
+        hyper.append(np.mean(oldresults))
+        print("C={0} : acc {1}".format(c, np.mean(oldresults)))
+optimal_hyper = cees[hyper.index(max(hyper))]
+oldmodel,oldvalidator = train(ANOVA_SELECTION, C = optimal_hyper)
+oldresults = oldvalidator(ds3)
+
+np.savetxt(OUTDIR + "/results-folds-best.csv",
+           oldresults.samples,
+           fmt='%10.5f')
+
 masks = sensitivity_maps(sensitivity_maps_aux(oldmodel, ds3), CLASSES)
-model,validator,pvals = null_cv(PERMUTATIONS, CLASSES, masks, ANOVA_SELECTION)
+
+# null accuracy estimation using Monte-Carlo method
+model,validator,pvals,svm_max = null_cv(PERMUTATIONS,
+                                        CLASSES,
+                                        masks,
+                                        ANOVA_SELECTION,
+                                        C = optimal_hyper)
 results = validator(ds3)
-pvals = {k : pvals[k] / (PERMUTATIONS * max(ds3.sa.block)) for k in pvals.keys()}
+pvals = {k : pvals[k]/(PERMUTATIONS * max(ds3.sa.block)) for k in pvals.keys()}
 
 fo = open(OUTDIR + "/conf-matrix-stats.txt", "w+")
 fo.writelines(validator.ca.stats.as_string(description = True))
@@ -127,13 +146,14 @@ fo.close()
 
 np.savetxt(OUTDIR + "/conf-matrix.csv",
            validator.ca.stats._ConfusionMatrix__matrix,
-           header = ' '.join(validator.ca.stats._ConfusionMatrix__labels))
+           header = ' '.join(validator.ca.stats._ConfusionMatrix__labels),
+           fmt='%i')
 
 validator.ca.stats.plot()
 plt.savefig(OUTDIR + '/conf-matrix.svg')
 plt.close()
 
-fo = open(OUTDIR + '/null-dist.txt', "w+")
+fo = open(OUTDIR + '/null-dist.csv', "w+")
 fo.writelines("\n".join(str(i) \
         for i in validator.null_dist.ca.dist_samples.samples.tolist()[0][0]))
 fo.close()
@@ -179,4 +199,7 @@ for name in masks:
                 nimg_s = map2nifti(ds, masks[name])
                 nimg_p = map2nifti(ds, pvals[name])
         nimg_s.to_filename(OUTDIR + '/' + name + '-weights.nii.gz')
-        nimg_p.to_filename(OUTDIR + '/' + name + '-raw_pvals.nii.gz')
+        nimg_p.to_filename(OUTDIR + '/' + name + '-uncorrected_pvals.nii.gz')
+        fo = open(OUTDIR + '/' + name + "-max_null_dist.csv", "w+")
+        fo.writelines("\n".join(str(x) for x in svm_max[name]))
+        fo.close()
