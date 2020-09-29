@@ -8,7 +8,8 @@ SRC_DIR := src
 DATA_DIR := data
 
 TASKNAME := emotionalfaces
-PERMUTATIONS := 5
+RUNS := 5
+PERMUTATIONS := 2
 
 # .PHONY : build all
 # all : build
@@ -109,15 +110,15 @@ register_results : $(SENSITIVITY_MAPS:.nii.gz=-T1-smooth.nii.gz)
 	@echo 'transforming to T1w space $<'
 	@id=$< ; id=$${id%/*/*/*} ; id=$${id##*/} ; \
 	t1=$$(find "$(DATA_DIR)/volbrain/$$id" -name '*_brain.nii.gz') ; \
-	mat=$$(find "$(DATA_DIR)/feat/$$id" -name '*func2highres.mat' | head -n1) ; \
+	mat=$$(find "$(DATA_DIR)/feat/$$id" -name '*func2standard.mat' | head -n1) ; \
 	flirt -interp trilinear \
 	      -in "$<" \
 	      -ref "$$t1" \
 	      -applyxfm \
 	      -init "$$mat" \
 	      -out "$(subst .nii.gz,-T1,$<)"
-	@echo 'gaussian-smoothing (7mm FWHM) $@'
-	@fslmaths "$(subst .nii.gz,-T1.nii.gz,$<)" -s 2.972 "$@"
+#	@echo 'gaussian-smoothing (7mm FWHM) $@'
+#	@fslmaths "$(subst .nii.gz,-T1.nii.gz,$<)" -s 2.972 "$@"
 
 ################################################################################
 # pyMVPA rules
@@ -149,11 +150,11 @@ $(BUILD_DIR)/pymvpa/whole/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
 	@echo "running pyMVPA for $<"
 	@mask=$$(find "$(subst $(BUILD_DIR)/pymvpa/whole,$(DATA_DIR)/feat,$@)" -name 'volbrain-mask.tmp.nii.gz') ; \
 	id=$@ ; id=$${id##*/} ; \
-	for category in $(SRC_DIR)/pymvpa/contrasts/faces ; do \
+	for category in $(SRC_DIR)/pymvpa/contrasts/* ; do \
 	    while read contrast; do \
 	        outdir=$@/$$(basename $${category})/$${contrast} ; \
 	        mkdir -p "$$outdir" ; \
-	        python2 "$(SRC_DIR)/pymvpa/main.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" $(PERMUTATIONS) & \
+	        fsl_sub python2 "$(SRC_DIR)/pymvpa/main.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" $(PERMUTATIONS) & \
 	    done < "$$category" ; \
 	done
 
@@ -163,7 +164,8 @@ detrend_normalize_reduced : $(addsuffix /filtered_func_data-norm.nii.gz, $(addpr
 
 $(DATA_DIR)/pymvpa/%/filtered_func_data-norm.nii.gz : $(DATA_DIR)/feat/%/feat.feat/filtered_func_data.nii.gz
 	@echo 'detrending and normalizing into $@'
-	@python2 "$(SRC_DIR)/pymvpa/detrend-normalize.py" "$@" "$<"  > /dev/null 2>&1
+	@nvols=$$(fslnvols "$<") ; \
+	python2 "$(SRC_DIR)/pymvpa/detrend-normalize.py" "$@" "$<" $$(($$nvols / $(RUNS))) > /dev/null 2>&1
 
 .PHONY : detrend_normalize
 detrend_normalize : $(addsuffix /concat-brain-norm.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
@@ -171,7 +173,8 @@ detrend_normalize : $(addsuffix /concat-brain-norm.nii.gz, $(addprefix $(DATA_DI
 
 %/concat-brain-norm.nii.gz : %/concat-brain.nii.gz
 	@echo 'detrending and normalizing into $@'
-	@python2 "$(SRC_DIR)/pymvpa/detrend-normalize.py" "$@" "$<"  > /dev/null 2>&1
+	@nvols=$$(fslnvols "$<") ; \
+	python2 "$(SRC_DIR)/pymvpa/detrend-normalize.py" "$@" "$<" $$(($$nvols / $(RUNS))) > /dev/null 2>&1
 
 ################################################################################
 # post-FEAT brain masking and atlas parcellation

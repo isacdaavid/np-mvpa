@@ -7,7 +7,7 @@ import sys
 sys.path.append('/home/inb/lconcha/fmrilab_software/miniconda2/lib/python2.7/site-packages')
 from mvpa2.suite import *
 
-VOLS_PER_ACQ = 185
+VOLS_PER_ACQ = int(sys.argv[3])
 
 def prepro(ds):
         # detrending

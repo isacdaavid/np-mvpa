@@ -20,4 +20,3 @@ merged.a.imgtype = datasets[0].a.imgtype
 
 nimg = map2nifti(merged, merged)
 nimg.to_filename(sys.argv[1])
-
