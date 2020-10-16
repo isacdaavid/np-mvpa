@@ -307,25 +307,25 @@ rm(nulls)
 
 ## statistical maps on MNI space ###############################################
 
-gc()
-models <- lapply(map_files, function(path) readnii(path))
-mean_params <- Reduce(function(a, b) {a + b}, models) / length(models)
-models_matrix <- do.call(rbind, lapply(models, c))
-rm(models) ; gc()
-sd_params <- nifti(array(apply(models_matrix, 2, sd), dim = dim(mean_params)),
-                   dim = dim(mean_params),
-                   datatype = datatype(mean_params),
-                   pixdim = pixdim(mean_params),
-                   xyzt_units = xyzt_units(mean_params),
-                   qoffset_x = qoffset_x(mean_params),
-                   qoffset_y = qoffset_y(mean_params),
-                   qoffset_z = qoffset_z(mean_params))
-rm(models_matrix) ; gc()
-## dirty trick to fix image orientation (conversion to matrix messed it up)
-sd_params2 <- mean_params + sd_params - mean_params
-rm(sd_params) ; gc()
-z_scores <- mean_params / sd_params2
-z_scores[is.nan(z_scores)] <- 0
-writenii(mean_params, paste0(OUTPATH, '/mean-weights-T1.nii.gz'))
-writenii(sd_params2, paste0(OUTPATH, '/sd-weights-T1.nii.gz'))
-writenii(z_scores, paste0(OUTPATH, '/z-scores-weights-T1.nii.gz'))
+## gc()
+## models <- lapply(map_files, function(path) readnii(path))
+## mean_params <- Reduce(function(a, b) {a + b}, models) / length(models)
+## models_matrix <- do.call(rbind, lapply(models, c))
+## rm(models) ; gc()
+## sd_params <- nifti(array(apply(models_matrix, 2, sd), dim = dim(mean_params)),
+##                    dim = dim(mean_params),
+##                    datatype = datatype(mean_params),
+##                    pixdim = pixdim(mean_params),
+##                    xyzt_units = xyzt_units(mean_params),
+##                    qoffset_x = qoffset_x(mean_params),
+##                    qoffset_y = qoffset_y(mean_params),
+##                    qoffset_z = qoffset_z(mean_params))
+## rm(models_matrix) ; gc()
+## ## dirty trick to fix image orientation (conversion to matrix messed it up)
+## sd_params2 <- mean_params + sd_params - mean_params
+## rm(sd_params) ; gc()
+## z_scores <- mean_params / sd_params2
+## z_scores[is.nan(z_scores)] <- 0
+## writenii(mean_params, paste0(OUTPATH, '/mean-weights-T1.nii.gz'))
+## writenii(sd_params2, paste0(OUTPATH, '/sd-weights-T1.nii.gz'))
+## writenii(z_scores, paste0(OUTPATH, '/z-scores-weights-T1.nii.gz'))

@@ -3,6 +3,9 @@
 # author: Isaac David <isacdaavid@at@isacdaavid@dot@info>
 # license: GPLv3 or later
 
+import socket
+print(socket.gethostname())
+
 import sys
 sys.path.append('/home/inb/lconcha/fmrilab_software/miniconda2/lib/python2.7/site-packages')
 import matplotlib
@@ -105,9 +108,10 @@ ds3 = subsample(ds2, CLASSES)
 
 # representation similarity analysis
 ds4 = vstack([ds3[{'label': [l]}] for l in CLASSES])
-plot_RSA_matrix(pattern = RSA_matrix(ds4.samples, distance = "euclidean"),
-                labels = ds4.sa.label,
-                path = OUTDIR + '/RSA_euclidean')
+# FIXME: Einsten sum inside RSA_matrix() consumes too much memory apparently
+# plot_RSA_matrix(pattern = RSA_matrix(ds4.samples, distance = "euclidean"),
+#                 labels = ds4.sa.label,
+#                 path = OUTDIR + '/RSA_euclidean')
 plot_RSA_matrix(RSA_matrix(ds4.samples - np.mean(ds4.samples, axis = 0),
                            distance = "pearson"),
                 ds4.sa.label,
@@ -200,6 +204,6 @@ for name in masks:
                 nimg_p = map2nifti(ds, pvals[name])
         nimg_s.to_filename(OUTDIR + '/' + name + '-weights.nii.gz')
         nimg_p.to_filename(OUTDIR + '/' + name + '-uncorrected_pvals.nii.gz')
-        fo = open(OUTDIR + '/' + name + "-max_null_dist.csv", "w+")
+        fo = open(OUTDIR + '/' + name + "-max_weight_null_dist.csv", "w+")
         fo.writelines("\n".join(str(x) for x in svm_max[name]))
         fo.close()

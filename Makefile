@@ -54,7 +54,7 @@ $(BUILD_DIR)/pymvpa/wholemasked/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.g
 deregister_mask : $(addsuffix /mean-weights-99th.nii.gz, $(addprefix $(DATA_DIR)/feat/, $(IDS)))
 	@echo
 
-%/mean-weights-99th.nii.gz : %/feat.feat/reg/highres2example_func.mat %/feat.feat/example_func.nii.gz
+%/mean-weights-99th.nii.gz : %/feat.feat/reg/standard2example_func.mat %/feat.feat/example_func.nii.gz
 	@echo 'creating brain mask $@'
 	flirt -interp nearestneighbour \
 	-in "out/poststats/whole/emotions/neutral,happy,sad,angry/mean-weights-T1-99th.nii.gz" \
@@ -81,6 +81,19 @@ postpoststats :
 	    done ; \
 	done ;
 
+.PHONY : group_level
+group_level :
+	@for reduced in "whole" ; do \
+	    for category in $(SRC_DIR)/pymvpa/contrasts/* ; do \
+	        while read contrast; do \
+		    outdir=$(BUILD_DIR)/poststats/$${reduced}/$$(basename $$category)/$${contrast} ; \
+	            echo "running randomise for $$outdir" ; \
+	            mkdir -p "$$outdir" ; \
+	            paths=$$(find "$(BUILD_DIR)/pymvpa/$$reduced" -type d -name "$${contrast}" -printf "'%p'\n" | tr '\n' , ); \
+	        done < "$$category" ; \
+	    done ; \
+	done ;
+
 .PHONY : poststats
 poststats :
 	@for reduced in $$(ls $(BUILD_DIR)/pymvpa) ; do \
@@ -91,9 +104,8 @@ poststats :
 	            mkdir -p "$$outdir" ; \
 	            paths=$$(find "$(BUILD_DIR)/pymvpa/$$reduced" -type d -name "$${contrast}" -printf "'%p'\n" | tr '\n' , ); \
 	            nclasses=$$(awk -F , '{print NF}' <<< "$$contrast") ; \
-	            Rscript -e "INPATH <- c($${paths::-1}) ; OUTPATH <- \"$$outdir\" ; NCLASSES <- $$nclasses ; source('$(SRC_DIR)/poststats/poststats.R')" & sleep 1m ; \
+	            Rscript -e "INPATH <- c($${paths::-1}) ; OUTPATH <- \"$$outdir\" ; NCLASSES <- $$nclasses ; source('$(SRC_DIR)/poststats/poststats.R')" ; \
 	        done < "$$category" ; \
-	        sleep 5m ; \
 	    done ; \
 	done ;
 
@@ -137,7 +149,10 @@ $(BUILD_DIR)/pymvpa/reduced/% : $(DATA_DIR)/pymvpa/%/atlas-means.csv $(DATA_DIR)
 	    while read contrast; do \
 	        outdir=$@/$$(basename $${category})/$${contrast} ; \
 	        mkdir -p "$$outdir" ; \
-	        fsl_sub python2 "$(SRC_DIR)/pymvpa/main.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$(word 2,$^)" "$$mask" "$$outdir" "$<" "$$contrast" $(PERMUTATIONS) & \
+		tmpfile=s$${id}-$${contrast}.sh ; \
+	        echo python2 "$(SRC_DIR)/pymvpa/main.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$(word 2,$^)" "$$mask" "$$outdir" "$<" "$$contrast" $(PERMUTATIONS) >> $$tmpfile ; \
+		chmod ugo+x $$tmpfile ; \
+		qsub -l h_vmem=20G -l h='!(arwen.inb.unam.mx|tanner.inb.unam.mx|bloch.inb.unam.mx|rhesus.inb.unam.mx|giora.inb.unam.mx|austin.inb.unam.mx|sherrington.inb.unam.mx|mountcastle.inb.unam.mx|carr.inb.unam.mx|evarts.inb.unam.mx|sherrington.inb.unam.mx)' -V -cwd $$tmpfile ; \
 	    done < "$$category" ; \
 	done
 
@@ -154,7 +169,10 @@ $(BUILD_DIR)/pymvpa/whole/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
 	    while read contrast; do \
 	        outdir=$@/$$(basename $${category})/$${contrast} ; \
 	        mkdir -p "$$outdir" ; \
-	        fsl_sub python2 "$(SRC_DIR)/pymvpa/main.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" $(PERMUTATIONS) & \
+		tmpfile=s$${id}-$${contrast}.sh ; \
+		echo python2 "$(SRC_DIR)/pymvpa/main.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" $(PERMUTATIONS) >> $$tmpfile ; \
+		chmod ugo+x $$tmpfile ; \
+		qsub -l h_vmem=20G -l h='!(arwen.inb.unam.mx|tanner.inb.unam.mx|bloch.inb.unam.mx|rhesus.inb.unam.mx|giora.inb.unam.mx|austin.inb.unam.mx|sherrington.inb.unam.mx|mountcastle.inb.unam.mx|carr.inb.unam.mx|evarts.inb.unam.mx)' -V -cwd $$tmpfile ; \
 	    done < "$$category" ; \
 	done
 
@@ -243,7 +261,7 @@ feat_masks : $(addsuffix /volbrain-mask.nii.gz, $(addprefix $(DATA_DIR)/feat/, $
 	fslmaths "$@" -add $$(($$max1 + $$max2)) "$@" ; \
 	fslmaths "$@" -thr $$(($$max1 + $$max2 + 1)) "$@"
 
-%/atlas-cerebellum.nii.gz : %/feat.feat/reg/highres2example_func.mat %/feat.feat/example_func.nii.gz
+%/atlas-cerebellum.nii.gz : %/feat.feat/reg/standard2example_func.mat %/feat.feat/example_func.nii.gz
 	@echo 'creating cerebellar parcellation $@'
 	@flirt -interp nearestneighbour \
 	      -in "$(CEREBELLUM_ATLAS)" \
@@ -256,7 +274,7 @@ feat_masks : $(addsuffix /volbrain-mask.nii.gz, $(addprefix $(DATA_DIR)/feat/, $
 	fslmaths "$@" -add $$max "$@" ; \
 	fslmaths "$@" -thr $$(($$max + 1)) "$@"
 
-%/atlas-cort.nii.gz : %/feat.feat/reg/highres2example_func.mat %/feat.feat/example_func.nii.gz
+%/atlas-cort.nii.gz : %/feat.feat/reg/standard2example_func.mat %/feat.feat/example_func.nii.gz
 	@echo 'creating cortical parcellation $@'
 	@flirt -interp nearestneighbour \
 	      -in "$(CORTICAL_ATLAS)" \
