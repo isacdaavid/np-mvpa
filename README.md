@@ -53,13 +53,8 @@ Needed libraries:
 
 - R:
 
-   - oro.nifti
-   - neurobase
    - ggplot2
-   - dplyr (what for?)
    - reshape2 (`acast()`)
-   - plotly (deprecated)
-   - parallel (`mclapply`)
    - effsize (`cohen.d()`)
    - [rainclouds](https://github.com/RainCloudPlots/RainCloudPlots)
      may ask for additional packages

@@ -17,14 +17,6 @@ from mvpa2.suite import *
 # local imports
 from libmvpa import *
 
-# ATTR_FNAME = "../../data/psychopy/01.csv"
-# BOLD_FNAME = "../../data/pymvpa/01/concat-brain-norm.nii.gz"
-# MASK_FNAME = "../../data/feat/01/volbrain-mask.tmp.nii.gz"
-# OUTDIR = "../../out/pymvpa/whole/01/faces/scrambled,neutral"
-# REDUCED_BOLD_FNAME = "../../data/pymvpa/01/concat-brain-norm.nii.gz"
-# CLASSES = ['scrambled', 'neutral']
-# PERMUTATIONS = 1
-
 # arguments passed to script
 ATTR_FNAME = sys.argv[1]
 BOLD_FNAME = sys.argv[2]
@@ -35,11 +27,13 @@ CLASSES = eval("['" + re.sub(",", "','", sys.argv[6]) + "']")
 PERMUTATIONS = int(sys.argv[7])
 
 # other global constants
+# TODO: don't hard-code. infer from file
 STEP = 2000 # time step between different Hemodynamic Response delays (ms)
 TIME_START = 0 # first HR delay to test for (ms)
 TIME_LIMIT = 10001 # maximum HR delay to test for (ms)
 SLICE_TIMING_REFERENCE = +1000 # ms
 DELAYS = range(TIME_START, TIME_LIMIT, STEP)
+PREDEFINED_DELAY = 4000 # ms
 
 ANOVA_SELECTION = 1 # proportion of features to work with
 
@@ -103,7 +97,7 @@ if REDUCED_BOLD_FNAME != BOLD_FNAME :
         # load low-dimensional version of dataset
         ds = Dataset(np.genfromtxt(REDUCED_BOLD_FNAME, delimiter=' '))
         ds.sa = orig.sa
-ds2 = label(ds, attr, SLICE_TIMING_REFERENCE, 4000)
+ds2 = label(ds, attr, SLICE_TIMING_REFERENCE, PREDEFINED_DELAY)
 ds3 = subsample(ds2, CLASSES)
 
 # representation similarity analysis
@@ -119,7 +113,8 @@ plot_RSA_matrix(RSA_matrix(ds4.samples - np.mean(ds4.samples, axis = 0),
 
 # tune regularizing hyperparameter 'C'
 hyper = []
-cees = [1, .1, .01, .001, .0001, -1]
+# cees = [1, .1, .01, .001, .0001, -1]
+cees = [-1]
 for c in cees:
         oldmodel,oldvalidator = train(ANOVA_SELECTION, C = c)
         oldresults = oldvalidator(ds3)

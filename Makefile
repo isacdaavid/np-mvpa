@@ -26,7 +26,6 @@ VOLBRAIN_IMAGES = $(shell find data/volbrain/ -type f -name 'n_mmni*')
 CEREBELLUM_ATLAS := $(DATA_DIR)/atlases/Buckner_JNeurophysiol11_MNI152/Buckner2011_7Networks_MNI152_FreeSurferConformed1mm_TightMask_REORIENTED.nii.gz
 CORTICAL_ATLAS := $(DATA_DIR)/atlases/Schaefer2018_FSLMNI152_1mm/Schaefer2018_1000Parcels_7Networks_order_FSLMNI152_1mm.nii.gz
 SENSITIVITY_MAPS = $(shell find $(BUILD_DIR)/pymvpa -type f -name '*.nii.gz' | grep -v T1)
-ZMAPS = $(shell find $(BUILD_DIR)/poststats -type f -name 'z-scores-weights-T1.nii.gz')
 
 ################################################################################
 # thresholded SVM map validation
@@ -78,18 +77,43 @@ postpoststats :
 	            printf "%s\t%s\n" "$$(tail -n1 "$$f")" \
 	                   "$$(echo $${f#*/*/*/*/} | sed 's|/stats.csv||')" ; \
 	        done | sort >> "$$out" ; \
+	        pvals_greater=($$(find "$(BUILD_DIR)/poststats/$$reduced/$$cat" -type f -name 'greater_zero_tfce_corrp_tstat1.nii.gz')) ; \
+	        pvals_less=($$(find "$(BUILD_DIR)/poststats/$$reduced/$$cat" -type f -name 'less_zero_tfce_corrp_tstat1.nii.gz')) ; \
+	        fslmerge -t "$(BUILD_DIR)/poststats/$$reduced/$$cat/greater_zero_tfce_corrp_tstat_MERGED.nii.gz" "$${pvals_greater[@]}" ; \
+	        fslmaths "$(BUILD_DIR)/poststats/$$reduced/$$cat/greater_zero_tfce_corrp_tstat_MERGED.nii.gz" -Tmean "$(BUILD_DIR)/poststats/$$reduced/$$cat/greater_zero_tfce_corrp_tstat_MEAN.nii.gz" ; \
+	        fslmerge -t "$(BUILD_DIR)/poststats/$$reduced/$$cat/less_zero_tfce_corrp_tstat_MERGED.nii.gz" "$${pvals_less[@]}" ; \
+	        fslmaths "$(BUILD_DIR)/poststats/$$reduced/$$cat/less_zero_tfce_corrp_tstat_MERGED.nii.gz" -Tmean "$(BUILD_DIR)/poststats/$$reduced/$$cat/less_zero_tfce_corrp_tstat_MEAN.nii.gz" ; \
 	    done ; \
 	done ;
 
-.PHONY : group_level
-group_level :
+.PHONY : group_level_glm
+group_level_glm :
+	@for contrast in $(SRC_DIR)/feat/3.level-3-lme-designs/* ; do \
+	    outdir=$(BUILD_DIR)/feat/TFCE-randomise/$$(basename $${contrast%.fsf}) ; \
+	    echo "running randomise for $$outdir" ; \
+	    mkdir -p "$$outdir" ; \
+	    paths=($$(grep -E cope.*.nii.gz "$$contrast" | cut -f 3 -d ' ' | tr -d '"' | sed 's|stats|reg_standard/stats|')) ; \
+	    fslmerge -t "$${outdir}/merged_weights.nii.gz" "$${paths[@]}" ; \
+	    fsl_sub /home/inb/lconcha/fmrilab_software/fsl_4.1.9/bin/randomise -i "$${outdir}/merged_weights.nii.gz" -o "$${outdir}/greater_zero" -1 -v 5 -T -n $(PERMUTATIONS) ; \
+	    fslmaths "$${outdir}/merged_weights.nii.gz" -mul -1 "$${outdir}/merged_weights_neg.nii.gz" ; \
+	    fsl_sub /home/inb/lconcha/fmrilab_software/fsl_4.1.9/bin/randomise -i "$${outdir}/merged_weights_neg.nii.gz" -o "$${outdir}/less_zero" -1 -v 5 -T -n $(PERMUTATIONS) ; \
+	done
+
+.PHONY : group_level_mvpa
+group_level_mvpa :
 	@for reduced in "whole" ; do \
 	    for category in $(SRC_DIR)/pymvpa/contrasts/* ; do \
 	        while read contrast; do \
-		    outdir=$(BUILD_DIR)/poststats/$${reduced}/$$(basename $$category)/$${contrast} ; \
+	            outdir=$(BUILD_DIR)/poststats/$${reduced}/$$(basename $$category)/$${contrast} ; \
 	            echo "running randomise for $$outdir" ; \
 	            mkdir -p "$$outdir" ; \
-	            paths=$$(find "$(BUILD_DIR)/pymvpa/$$reduced" -type d -name "$${contrast}" -printf "'%p'\n" | tr '\n' , ); \
+	            paths=($$(find "$(BUILD_DIR)/pymvpa/$$reduced" -type f -name "$${contrast}-weights-T1.nii.gz" | grep "/$${contrast}/" | sort)) ; \
+	            fslmerge -t "$${outdir}/merged_weights.nii.gz" "$${paths[@]}" ; \
+#	            fslmaths "$${outdir}/merged_weights.nii.gz" -abs "$${outdir}/merged_weights_abs.nii.gz" ; \
+	            fslmaths "$${outdir}/merged_weights.nii.gz" -s 2.123 "$${outdir}/merged_weights_smooth.nii.gz" ; \
+	            fsl_sub /home/inb/lconcha/fmrilab_software/fsl_4.1.9/bin/randomise -i "$${outdir}/merged_weights_smooth.nii.gz" -o "$${outdir}/greater_zero" -1 -v 5 -T -n $(PERMUTATIONS) ; \
+	            fslmaths "$${outdir}/merged_weights_smooth.nii.gz" -mul -1 "$${outdir}/merged_weights_smooth_neg.nii.gz" ; \
+	            fsl_sub /home/inb/lconcha/fmrilab_software/fsl_4.1.9/bin/randomise -i "$${outdir}/merged_weights_smooth_neg.nii.gz" -o "$${outdir}/less_zero" -1 -v 5 -T -n $(PERMUTATIONS) ; \
 	        done < "$$category" ; \
 	    done ; \
 	done ;
@@ -102,7 +126,7 @@ poststats :
 	            outdir=$(BUILD_DIR)/poststats/$${reduced}/$$(basename $$category)/$${contrast} ; \
 	            echo "running result statistics for $$outdir" ; \
 	            mkdir -p "$$outdir" ; \
-	            paths=$$(find "$(BUILD_DIR)/pymvpa/$$reduced" -type d -name "$${contrast}" -printf "'%p'\n" | tr '\n' , ); \
+	            paths=$$(find "$(BUILD_DIR)/pymvpa/$$reduced" -type d -name "$${contrast}" -printf "'%p'\n" | sort | tr '\n' , ) ; \
 	            nclasses=$$(awk -F , '{print NF}' <<< "$$contrast") ; \
 	            Rscript -e "INPATH <- c($${paths::-1}) ; OUTPATH <- \"$$outdir\" ; NCLASSES <- $$nclasses ; source('$(SRC_DIR)/poststats/poststats.R')" ; \
 	        done < "$$category" ; \
@@ -110,15 +134,23 @@ poststats :
 	done ;
 
 ################################################################################
+# univariate/GLM first-level analysis
+################################################################################
+
+.PHONY : feat_level1
+feat_level1 :
+	feat $(SRC_DIR)/feat/2.level-1-glm-design.fsf
+
+################################################################################
 # transform resulting sensitivity maps back to T1w space, then
 # denoise to improve spatial detection at group analysis
 ################################################################################
 
-.PHONY : register_results
-register_results : $(SENSITIVITY_MAPS:.nii.gz=-T1-smooth.nii.gz)
+.PHONY : register_results_mvpa
+register_results_mvpa : $(SENSITIVITY_MAPS:.nii.gz=-T1.nii.gz)
 	@echo
 
-%-T1-smooth.nii.gz : %.nii.gz
+%-T1.nii.gz : %.nii.gz
 	@echo 'transforming to T1w space $<'
 	@id=$< ; id=$${id%/*/*/*} ; id=$${id##*/} ; \
 	t1=$$(find "$(DATA_DIR)/volbrain/$$id" -name '*_brain.nii.gz') ; \
@@ -129,8 +161,6 @@ register_results : $(SENSITIVITY_MAPS:.nii.gz=-T1-smooth.nii.gz)
 	      -applyxfm \
 	      -init "$$mat" \
 	      -out "$(subst .nii.gz,-T1,$<)"
-#	@echo 'gaussian-smoothing (7mm FWHM) $@'
-#	@fslmaths "$(subst .nii.gz,-T1.nii.gz,$<)" -s 2.972 "$@"
 
 ################################################################################
 # pyMVPA rules
@@ -172,7 +202,7 @@ $(BUILD_DIR)/pymvpa/whole/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
 		tmpfile=s$${id}-$${contrast}.sh ; \
 		echo python2 "$(SRC_DIR)/pymvpa/main.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" $(PERMUTATIONS) >> $$tmpfile ; \
 		chmod ugo+x $$tmpfile ; \
-		qsub -l h_vmem=20G -l h='!(arwen.inb.unam.mx|tanner.inb.unam.mx|bloch.inb.unam.mx|rhesus.inb.unam.mx|giora.inb.unam.mx|austin.inb.unam.mx|sherrington.inb.unam.mx|mountcastle.inb.unam.mx|carr.inb.unam.mx|evarts.inb.unam.mx)' -V -cwd $$tmpfile ; \
+		qsub -l h_vmem=20G -l h='!(arwen.inb.unam.mx|giora.inb.unam.mx)' -V -cwd $$tmpfile ; \
 	    done < "$$category" ; \
 	done
 

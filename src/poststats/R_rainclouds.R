@@ -12,6 +12,7 @@ if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
 
 # Load packages ----
 library(ggplot2)
+library(dplyr)
 
 # Defining the geom_flat_violin function ----
 # Note: the below code modifies the

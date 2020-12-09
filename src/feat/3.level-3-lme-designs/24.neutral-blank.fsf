@@ -33,13 +33,13 @@ set fmri(featwatcher_yn) 1
 set fmri(sscleanup_yn) 0
 
 # Output directory
-set fmri(outputdir) "/misc/cannabis/isacdaavid/nobackup/emotion-perception-mvpa-2/out/feat/19.sad-neutral"
+set fmri(outputdir) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/out/feat/24.neutral-blank"
 
 # TR(s)
 set fmri(tr) 3
 
 # Total volumes
-set fmri(npts) 12
+set fmri(npts) 16
 
 # Delete volumes
 set fmri(ndelete) 0
@@ -48,7 +48,7 @@ set fmri(ndelete) 0
 set fmri(tagfirst) 1
 
 # Number of first-level analyses
-set fmri(multiple) 12
+set fmri(multiple) 16
 
 # Higher-level input type
 # 1 : Inputs are lower-level FEAT directories
@@ -278,40 +278,52 @@ set fmri(totalVoxels) 143360
 set fmri(ncopeinputs) 0
 
 # 4D AVW data or FEAT directory (1)
-set feat_files(1) "/misc/cannabis/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/56190/feat.feat/filtered_func_data.feat/stats/cope19"
+set feat_files(1) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/01/feat.feat/filtered_func_data.feat/stats/cope24.nii.gz"
 
 # 4D AVW data or FEAT directory (2)
-set feat_files(2) "/misc/cannabis/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/56347/feat.feat/filtered_func_data.feat/stats/cope19.nii.gz"
+set feat_files(2) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/02/feat.feat/filtered_func_data.feat/stats/cope24.nii.gz"
 
 # 4D AVW data or FEAT directory (3)
-set feat_files(3) "/misc/cannabis/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/56789/feat.feat/filtered_func_data.feat/stats/cope19.nii.gz"
+set feat_files(3) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/03/feat.feat/filtered_func_data.feat/stats/cope24.nii.gz"
 
 # 4D AVW data or FEAT directory (4)
-set feat_files(4) "/misc/cannabis/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/56919/feat.feat/filtered_func_data.feat/stats/cope19.nii.gz"
+set feat_files(4) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/04/feat.feat/filtered_func_data.feat/stats/cope24.nii.gz"
 
 # 4D AVW data or FEAT directory (5)
-set feat_files(5) "/misc/cannabis/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/56960/feat.feat/filtered_func_data.feat/stats/cope19.nii.gz"
+set feat_files(5) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/05/feat.feat/filtered_func_data.feat/stats/cope24.nii.gz"
 
 # 4D AVW data or FEAT directory (6)
-set feat_files(6) "/misc/cannabis/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/56961/feat.feat/filtered_func_data.feat/stats/cope19.nii.gz"
+set feat_files(6) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/06/feat.feat/filtered_func_data.feat/stats/cope24.nii.gz"
 
 # 4D AVW data or FEAT directory (7)
-set feat_files(7) "/misc/cannabis/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/57187/feat.feat/filtered_func_data.feat/stats/cope19.nii.gz"
+set feat_files(7) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/07/feat.feat/filtered_func_data.feat/stats/cope24.nii.gz"
 
 # 4D AVW data or FEAT directory (8)
-set feat_files(8) "/misc/cannabis/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/58272/feat.feat/filtered_func_data.feat/stats/cope19.nii.gz"
+set feat_files(8) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/08/feat.feat/filtered_func_data.feat/stats/cope24.nii.gz"
 
 # 4D AVW data or FEAT directory (9)
-set feat_files(9) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/58356/feat.feat/filtered_func_data.feat/stats/cope19.nii.gz"
+set feat_files(9) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/09/feat.feat/filtered_func_data.feat/stats/cope24.nii.gz"
 
 # 4D AVW data or FEAT directory (10)
-set feat_files(10) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/58682/feat.feat/filtered_func_data.feat/stats/cope19.nii.gz"
+set feat_files(10) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/10/feat.feat/filtered_func_data.feat/stats/cope24.nii.gz"
 
 # 4D AVW data or FEAT directory (11)
-set feat_files(11) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/58683/feat.feat/filtered_func_data.feat/stats/cope19.nii.gz"
+set feat_files(11) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/11/feat.feat/filtered_func_data.feat/stats/cope24.nii.gz"
 
 # 4D AVW data or FEAT directory (12)
-set feat_files(12) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/58686/feat.feat/filtered_func_data.feat/stats/cope19.nii.gz"
+set feat_files(12) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/12/feat.feat/filtered_func_data.feat/stats/cope24.nii.gz"
+
+# 4D AVW data or FEAT directory (13)
+set feat_files(13) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/13/feat.feat/filtered_func_data.feat/stats/cope24.nii.gz"
+
+# 4D AVW data or FEAT directory (14)
+set feat_files(14) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/14/feat.feat/filtered_func_data.feat/stats/cope24.nii.gz"
+
+# 4D AVW data or FEAT directory (15)
+set feat_files(15) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/15/feat.feat/filtered_func_data.feat/stats/cope24.nii.gz"
+
+# 4D AVW data or FEAT directory (16)
+set feat_files(16) "/misc/cannabis2/isacdaavid/nobackup/emotion-perception-mvpa-2/data/feat/16/feat.feat/filtered_func_data.feat/stats/cope24.nii.gz"
 
 # Add confound EVs text file
 set fmri(confoundevs) 0
@@ -392,6 +404,18 @@ set fmri(evg11.1) 1.0
 # Higher-level EV value for EV 1 and input 12
 set fmri(evg12.1) 1.0
 
+# Higher-level EV value for EV 1 and input 13
+set fmri(evg13.1) 1
+
+# Higher-level EV value for EV 1 and input 14
+set fmri(evg14.1) 1
+
+# Higher-level EV value for EV 1 and input 15
+set fmri(evg15.1) 1
+
+# Higher-level EV value for EV 1 and input 16
+set fmri(evg16.1) 1
+
 # Setup Orthogonalisation at higher level? 
 set fmri(level2orth) 0
 
@@ -430,6 +454,18 @@ set fmri(groupmem.11) 1
 
 # Group membership for input 12
 set fmri(groupmem.12) 1
+
+# Group membership for input 13
+set fmri(groupmem.13) 1
+
+# Group membership for input 14
+set fmri(groupmem.14) 1
+
+# Group membership for input 15
+set fmri(groupmem.15) 1
+
+# Group membership for input 16
+set fmri(groupmem.16) 1
 
 # Contrast & F-tests mode
 # real : control real EVs
