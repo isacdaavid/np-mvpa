@@ -7,7 +7,7 @@ import socket
 print(socket.gethostname())
 
 import sys
-sys.path.append('/home/inb/lconcha/fmrilab_software/miniconda2/lib/python2.7/site-packages')
+# sys.path.append('/home/inb/lconcha/fmrilab_software/miniconda2/lib/python2.7/site-packages')
 import matplotlib
 matplotlib.use('Agg') # force matplotlib not to use any Xwindows backend
 import matplotlib.pyplot as plt

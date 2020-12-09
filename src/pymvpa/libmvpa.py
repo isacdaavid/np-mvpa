@@ -4,7 +4,7 @@
 # license: GPLv3 or later
 
 import sys
-sys.path.append('/home/inb/lconcha/fmrilab_software/miniconda2/lib/python2.7/site-packages')
+# sys.path.append('/home/inb/lconcha/fmrilab_software/miniconda2/lib/python2.7/site-packages')
 
 import matplotlib
 matplotlib.use('Agg') # force matplotlib not to use any Xwindows backend
@@ -17,7 +17,7 @@ def label(ds, attr, slice_timing_reference, hrf_delay):
     """Append labels to a dataset sample attributes at ds.sa['label']
 
     Args:
-      ds (pyMVPA Dataset): dataset which labels will be added to
+      ds (pyMVPA Dataset): dataset to which labels will be added
       attr (pyMVPA SampleAttributes): dict with labels, onset_time and block
       slice_timing_reference (int): time of reference volume in miliseconds
       hrf_delay: withold label by this amount of miliseconds after onset
@@ -62,11 +62,30 @@ def label(ds, attr, slice_timing_reference, hrf_delay):
 ################################################################################
 
 def subsample(ds0, classes):
+        """Subselect sample vectors based on class label
+
+        Args:
+          ds0 (pyMVPA Dataset): dataset to be subsampled
+          classes (list): list of class/label strings
+
+        Returns: (pyMVPA Dataset)
+        """
         ds1 = ds0[{'label': classes}]
         ds1.sa['targets'] = ds1.sa.label # this is the label/target attribute
         return ds1
 
 def train(anova_selection, C = -1.0):
+        """Train and cross-validate SVM with optional voxel selection
+
+        Args:
+          anova_selection (float): select top F-scoring voxels by this amount (0, 1]
+          C (float): SVM regularization hyperparameter (default -1. See LinearCSVMC())
+
+        Returns (tuple):
+          fclf (FeatureSelectionClassifier): complex classifier object schema
+          cv (CrossValidation): crossvalidation object, expects Dataset argument
+                                to actually trigger training
+        """
         clf = LinearCSVMC(C = C)
         fsel = SensitivityBasedFeatureSelection(
                         OneWayAnova(),
@@ -85,6 +104,27 @@ def train(anova_selection, C = -1.0):
 ################################################################################
 
 def null_cv(permutations, classes, weights, anova_selection = 1.0, C = -1.0):
+        """Like train() but with permutation tests.
+           Train and cross-validate SVM with optional voxel selection, estimate
+           null accuracy distribution.
+
+        Args:
+          permutations (int): number of permutations for null model estimation
+          classes (list): list of class/label strings
+          weights (dict): sensitivity_maps() dict to read class combinations and
+                          populate subject SVM-max distro and p-val map
+          anova_selection (float): select top F-scoring voxels by this amount (0, 1]
+          C (float): SVM regularization hyperparameter (default -1. See LinearCSVMC())
+
+        Returns (tuple):
+          fclf (FeatureSelectionClassifier): complex classifier object schema
+          cv_mc (CrossValidation): crossvalidation object, expects Dataset argument
+                                to actually trigger training
+          PVALS (dict): uncorrected voxelwise p-val maps of SVM parameters (ndarray),
+                        one per class combination key
+          SVM_MAX (dict): lists of maximum observed SVM parameter at each
+                          permutation, one per class combination key
+        """
         global PERMUTATIONS, PERMUTED_FOLD, PVALS, SVM_MAX, CLASSES, WEIGHTS
         PERMUTATIONS = permutations
         CLASSES = classes
@@ -121,6 +161,16 @@ def null_cv(permutations, classes, weights, anova_selection = 1.0, C = -1.0):
         return fclf,cv_mc,PVALS,SVM_MAX
 
 def p_vals_map(data, node, result):
+    """update p-val maps and SVM_MAX lists upon permutation trigger. Side-effect
+       -only function, no return value.
+
+    Args:
+      data (pyMVPA Dataset): automatically bound, see CrossValidation() argument
+                             `postproc`
+      node (FeatureSelectionClassifier): automatically bound, see
+                                         CrossValidation() argument `postproc`
+      result: automatically bound, see CrossValidation() argument `postproc`
+    """
     global PERMUTATIONS, PERMUTED_FOLD, PVALS, SVM_MAX, CLASSES, WEIGHTS
     PERMUTED_FOLD += 1
     if PERMUTED_FOLD % max(data.sa.block) == 0:
@@ -139,11 +189,26 @@ def p_vals_map(data, node, result):
 ################################################################################
 
 def sensitivity_maps_aux(model, ds):
+        """Auxilary function for sensitivity_maps(). Extract sensitivity analyzer
+
+        Args:
+          model (FeatureSelectionClassifier): complex classifier object schema
+          ds (pyMVPA Dataset): dataset the model was trained with
+
+        Returns: model.get_sensitivity_analyzer() object
+        """
         analyzer = model.get_sensitivity_analyzer(force_train = False)
         return analyzer(ds)
 
-# outputs the computed "activation" maps (rather, sensitivity masks)
 def sensitivity_maps(sens, classes):
+        """Obtain SVM weights (activation maps/sensitivity maps) from model
+
+        Args:
+          sens: sensitivity analyzer object, as obtained from sensitivity_maps_aux()
+          classes (list): list of class/label strings
+
+        Returns: (dict)
+        """
         masks = dict()
         for comb in powerset(classes):
                 subset_pairs = []
@@ -154,10 +219,18 @@ def sensitivity_maps(sens, classes):
                 masks[name] = normalize_weights(np.array(subset_pairs))
         return masks
 
-# - L2-normalize to make sure vector sum is meaningful
-# - sum
-# - optionally, return n most significant weights
+
 def normalize_weights(weight_lists, significance = 1):
+        """L2-normalize SVM weight vector(s), add them together in case of
+           non-binary classification. Optionally. return n most significant
+           weights
+
+        Args:
+          weight_list (list): ndarrays with SVM weights
+          significance (float): select top voxels by this amount (0, 1]
+
+        Returns: (ndarray)
+        """
         for i in range(0, len(weight_lists)):
                 weight_lists[i] = l2_normed(weight_lists[i])
         if len(weight_lists) > 1:
@@ -168,14 +241,35 @@ def normalize_weights(weight_lists, significance = 1):
         return np.array([(0 if (x < ntile) else x) for x in total])
 
 def powerset(iterable):
+        """Output partial (i.e., nontrivial) powerset of list of classes/labels
+
+        Args:
+          iterable (iterable): list of classes/labels
+
+        Returns: partial powerset
+        """
         s = list(iterable)
         return chain.from_iterable(combinations(s, r) for r in range(2, len(s) + 1))
 
 def sanitize_mask_name(string):
+        """Extract class/label names from list-like literal string
+        
+        Args:
+          string (string)
+
+        Returns: (string) string without square brackets
+        """
         return re.sub("[' \[\]]", '', string)
 
 # percentage of voxels with non-zero weights
 def non_empty_weights_proportion(weights):
+        """Compute proportion of nonzero elements in array
+
+        Args:
+          weights (ndarray)
+
+        Returns: (float)
+        """
         return len(weights[weights != 0.0]) / float(len(weights))
 
 ################################################################################

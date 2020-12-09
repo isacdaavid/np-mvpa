@@ -4,7 +4,7 @@
 # license: GPLv3 or later
 
 import sys
-sys.path.append('/home/inb/lconcha/fmrilab_software/miniconda2/lib/python2.7/site-packages')
+# sys.path.append('/home/inb/lconcha/fmrilab_software/miniconda2/lib/python2.7/site-packages')
 from mvpa2.suite import *
 
 VOLS_PER_ACQ = int(sys.argv[3])
