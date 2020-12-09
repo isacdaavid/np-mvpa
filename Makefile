@@ -11,10 +11,6 @@ TASKNAME := emotionalfaces
 RUNS := 5
 PERMUTATIONS := 5000
 
-# .PHONY : build all
-# all : build
-# build : register_results
-
 IDS_FILE := $(DATA_DIR)/xnat/subject_metadata/fmri_subject_ids.csv
 # note the use of the lazy assignment operator (strict evaluation) to avoid
 # memoization of IDS after $(IDS_FILE) is regenerated
@@ -23,49 +19,14 @@ DICOMS = $(shell find $(DATA_DIR)/xnat/images/ -type d -name DICOM | \
                   grep -E '(FMRI|RestState|T1|T2)' | sort)
 VOLBRAIN_ZIPS = $(shell find $(DATA_DIR)/volbrain/ -type f -name '*.zip')
 VOLBRAIN_IMAGES = $(shell find data/volbrain/ -type f -name 'n_mmni*')
-CEREBELLUM_ATLAS := $(DATA_DIR)/atlases/Buckner_JNeurophysiol11_MNI152/Buckner2011_7Networks_MNI152_FreeSurferConformed1mm_TightMask_REORIENTED.nii.gz
-CORTICAL_ATLAS := $(DATA_DIR)/atlases/Schaefer2018_FSLMNI152_1mm/Schaefer2018_1000Parcels_7Networks_order_FSLMNI152_1mm.nii.gz
 SENSITIVITY_MAPS = $(shell find $(BUILD_DIR)/pymvpa -type f -name '*.nii.gz' | grep -v T1)
 
 ################################################################################
-# thresholded SVM map validation
+# postpoststats
 ################################################################################
 
-# train classifiers based on masked NIFTIs
-.PHONY : pymvpa_whole_mask
-pymvpa_whole_mask : $(addprefix $(BUILD_DIR)/pymvpa/wholemasked/, $(IDS))
-	@echo $<
-
-$(BUILD_DIR)/pymvpa/wholemasked/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
-	@echo "running pyMVPA for $<"
-	@mask=$$(find "$(subst $(BUILD_DIR)/pymvpa/wholemasked,$(DATA_DIR)/feat,$@)" -name 'mean-weights-99th.nii.gz') ; \
-	id=$@ ; id=$${id##*/} ; \
-	for category in $(SRC_DIR)/pymvpa/contrasts/emotions ; do \
-	    while read contrast; do \
-	        outdir=$@/$$(basename $${category})/$${contrast} ; \
-	        mkdir -p "$$outdir" ; \
-	        python2 "$(SRC_DIR)/pymvpa/main.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$<" "$$mask" "$$outdir" "$<" "$$contrast" 10 ; sleep 30s ; \
-	    done < "$$category" ; \
-	done
-
-# turn mean SVM thresholded weight map into per-subject EPI-space masks
-.PHONY : deregister_mask
-deregister_mask : $(addsuffix /mean-weights-99th.nii.gz, $(addprefix $(DATA_DIR)/feat/, $(IDS)))
-	@echo
-
-%/mean-weights-99th.nii.gz : %/feat.feat/reg/standard2example_func.mat %/feat.feat/example_func.nii.gz
-	@echo 'creating brain mask $@'
-	flirt -interp nearestneighbour \
-	-in "out/poststats/whole/emotions/neutral,happy,sad,angry/mean-weights-T1-99th.nii.gz" \
-	-ref "$(subst mean-weights-99th,feat.feat/example_func,$@)" \
-	-applyxfm \
-	-init "$<" \
-	-out "$@"
-
-################################################################################
-# poststats
-################################################################################
-
+# summarize contrast results in a per-category CSV,
+# compute mean p-val map per category
 .PHONY : postpoststats
 postpoststats :
 	@for reduced in $$(ls $(BUILD_DIR)/pymvpa) ; do \
@@ -86,6 +47,11 @@ postpoststats :
 	    done ; \
 	done ;
 
+################################################################################
+# poststats and group-level cluster inference
+################################################################################
+
+# compute FWE-corrected p-val map using cluster-informed randomise
 .PHONY : group_level_glm
 group_level_glm :
 	@for contrast in $(SRC_DIR)/feat/3.level-3-lme-designs/* ; do \
@@ -99,6 +65,7 @@ group_level_glm :
 	    fsl_sub /home/inb/lconcha/fmrilab_software/fsl_4.1.9/bin/randomise -i "$${outdir}/merged_weights_neg.nii.gz" -o "$${outdir}/less_zero" -1 -v 5 -T -n $(PERMUTATIONS) ; \
 	done
 
+# compute FWE-corrected p-val map using cluster-informed randomise
 .PHONY : group_level_mvpa
 group_level_mvpa :
 	@for reduced in "whole" ; do \
@@ -118,6 +85,7 @@ group_level_mvpa :
 	    done ; \
 	done ;
 
+# group-level hypothesis tests on classification accuracy, effect size, plots
 .PHONY : poststats
 poststats :
 	@for reduced in $$(ls $(BUILD_DIR)/pymvpa) ; do \
@@ -142,12 +110,14 @@ feat_level1 :
 	feat $(SRC_DIR)/feat/2.level-1-glm-design.fsf
 
 ################################################################################
-# transform resulting sensitivity maps back to T1w space, then
-# denoise to improve spatial detection at group analysis
+# pyMVPA rules
 ################################################################################
 
-.PHONY : register_results_mvpa
-register_results_mvpa : $(SENSITIVITY_MAPS:.nii.gz=-T1.nii.gz)
+# transform resulting sensitivity maps back to T1w space, then
+# denoise to improve spatial detection at group analysis
+
+.PHONY : register_results
+register_results : $(SENSITIVITY_MAPS:.nii.gz=-T1.nii.gz)
 	@echo
 
 %-T1.nii.gz : %.nii.gz
@@ -161,30 +131,6 @@ register_results_mvpa : $(SENSITIVITY_MAPS:.nii.gz=-T1.nii.gz)
 	      -applyxfm \
 	      -init "$$mat" \
 	      -out "$(subst .nii.gz,-T1,$<)"
-
-################################################################################
-# pyMVPA rules
-################################################################################
-
-# train classifiers based on reduced timeseries CSV
-.PHONY : pymvpa_reduced
-pymvpa_reduced : $(addprefix $(BUILD_DIR)/pymvpa/reduced/, $(IDS))
-	@echo
-
-$(BUILD_DIR)/pymvpa/reduced/% : $(DATA_DIR)/pymvpa/%/atlas-means.csv $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
-	@echo "running pyMVPA for $<"
-	@mask=$$(find "$(subst $(BUILD_DIR)/pymvpa/reduced,$(DATA_DIR)/feat,$@)" -name 'atlas.nii.gz') ; \
-	id=$@ ; id=$${id##*/} ; \
-	for category in $(SRC_DIR)/pymvpa/contrasts/* ; do \
-	    while read contrast; do \
-	        outdir=$@/$$(basename $${category})/$${contrast} ; \
-	        mkdir -p "$$outdir" ; \
-		tmpfile=s$${id}-$${contrast}.sh ; \
-	        echo python2 "$(SRC_DIR)/pymvpa/main.py" "$(DATA_DIR)/psychopy/$${id}.csv" "$(word 2,$^)" "$$mask" "$$outdir" "$<" "$$contrast" $(PERMUTATIONS) >> $$tmpfile ; \
-		chmod ugo+x $$tmpfile ; \
-		qsub -l h_vmem=20G -l h='!(arwen.inb.unam.mx|tanner.inb.unam.mx|bloch.inb.unam.mx|rhesus.inb.unam.mx|giora.inb.unam.mx|austin.inb.unam.mx|sherrington.inb.unam.mx|mountcastle.inb.unam.mx|carr.inb.unam.mx|evarts.inb.unam.mx|sherrington.inb.unam.mx)' -V -cwd $$tmpfile ; \
-	    done < "$$category" ; \
-	done
 
 # train classifiers based on whole NIFTIs
 .PHONY : pymvpa_whole
@@ -206,15 +152,7 @@ $(BUILD_DIR)/pymvpa/whole/% : $(DATA_DIR)/pymvpa/%/concat-brain-norm.nii.gz
 	    done < "$$category" ; \
 	done
 
-.PHONY : detrend_normalize_reduced
-detrend_normalize_reduced : $(addsuffix /filtered_func_data-norm.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
-	@echo
-
-$(DATA_DIR)/pymvpa/%/filtered_func_data-norm.nii.gz : $(DATA_DIR)/feat/%/feat.feat/filtered_func_data.nii.gz
-	@echo 'detrending and normalizing into $@'
-	@nvols=$$(fslnvols "$<") ; \
-	python2 "$(SRC_DIR)/pymvpa/detrend-normalize.py" "$@" "$<" $$(($$nvols / $(RUNS))) > /dev/null 2>&1
-
+# linearly detrend and z-normalize time series
 .PHONY : detrend_normalize
 detrend_normalize : $(addsuffix /concat-brain-norm.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
 	@echo
@@ -225,17 +163,8 @@ detrend_normalize : $(addsuffix /concat-brain-norm.nii.gz, $(addprefix $(DATA_DI
 	python2 "$(SRC_DIR)/pymvpa/detrend-normalize.py" "$@" "$<" $$(($$nvols / $(RUNS))) > /dev/null 2>&1
 
 ################################################################################
-# post-FEAT brain masking and atlas parcellation
+# post-FEAT brain masking
 ################################################################################
-
-.PHONY : atlas_means
-atlas_means : $(addsuffix /atlas-means.csv, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
-	@echo
-
-$(DATA_DIR)/pymvpa/%/atlas-means.csv : $(DATA_DIR)/pymvpa/%/filtered_func_data-norm.nii.gz $(DATA_DIR)/feat/%/atlas.nii.gz
-	@echo 'extracting mean atlas timeseries to $@'
-	@atlas=$(subst atlas-means.csv,atlas.nii.gz,$(subst pymvpa,feat,$@)) ; \
-	fslmeants -i "$<" --label="$$atlas" > "$@"
 
 .PHONY : feat_brains
 feat_brains : $(addsuffix /concat-brain.nii.gz, $(addprefix $(DATA_DIR)/pymvpa/, $(IDS)))
@@ -256,63 +185,6 @@ $(DATA_DIR)/pymvpa/%/concat-brain.nii.gz : $(DATA_DIR)/feat/%/feat.feat/filtered
 feat_masks : $(addsuffix /volbrain-mask.nii.gz, $(addprefix $(DATA_DIR)/feat/, $(IDS))) $(addsuffix /atlas.nii.gz, $(addprefix $(DATA_DIR)/feat/, $(IDS)))
 	@echo
 
-#TODO: add prerequisite to _brain.nii.gz images, so as to complete dependency graph.
-
-%/atlas.nii.gz : %/atlas-cort.nii.gz %/atlas-cerebellum.nii.gz %/volbrain-subcort.nii.gz
-	@echo 'merging parcellations into $@'
-	@cort=$(subst atlas.nii.gz,atlas-cort,$@) ; \
-	cerebellum=$(subst atlas.nii.gz,atlas-cerebellum,$@) ; \
-	subcort=$(subst atlas.nii.gz,volbrain-subcort,$@) ; \
-	fslmaths "$${cort}.nii.gz" -add 1 "$${cort}.complement.nii.gz" ; \
-	fslmaths "$${cerebellum}.nii.gz" -add 1 "$${cerebellum}.complement.nii.gz" ; \
-	fslmaths "$${subcort}.nii.gz" -add 1 "$${subcort}.complement.nii.gz" ; \
-	fslmaths "$${cort}.complement.nii.gz" -uthr 1 "$${cort}.complement.nii.gz"; \
-	fslmaths "$${cerebellum}.complement.nii.gz" -uthr 1 "$${cerebellum}.complement.nii.gz"; \
-	fslmaths "$${subcort}.complement.nii.gz" -uthr 1 "$${subcort}.complement.nii.gz"; \
-	fslmaths "$${cort}.nii.gz" -mul "$${subcort}.complement.nii.gz" "$${cort}.nii.gz" ; \
-	fslmaths "$${cerebellum}.nii.gz" -mul "$${cort}.complement.nii.gz" "$${cerebellum}.nii.gz" ; \
-	fslmaths "$${cort}.nii.gz" -add "$${cerebellum}.nii.gz" -add "$${subcort}.nii.gz" "$@"
-
-%/volbrain-subcort.nii.gz : %/feat.feat/reg/highres2example_func.mat %/feat.feat/example_func.nii.gz
-	@echo 'creating subcortical parcellation $@'
-	@orig_mask_dir=$(subst volbrain-subcort.nii.gz,,$(subst feat,volbrain,$@)) ; \
-	orig_mask=$$(find "$$orig_mask_dir" -name '*lab_n_mmni*') ; \
-	flirt -interp nearestneighbour \
-	      -in "$$orig_mask" \
-	      -ref "$(subst volbrain-subcort,feat.feat/example_func,$@)" \
-	      -applyxfm \
-	      -init "$<" \
-	      -out "$@"
-#       remove lateral ventricles (labels 1 and 2)
-	@fslmaths "$@" -thr 3 "$@" && fslmaths "$@" -sub 2 "$@"
-#       shift values to avoid collision with other subatlases
-	@max1=$$(fslstats "$(CORTICAL_ATLAS)" -R | cut -d ' ' -f 2 | sed -E 's/\..*//') ; \
-	max2=$$(fslstats "$(CEREBELLUM_ATLAS)" -R | cut -d ' ' -f 2 | sed -E 's/\..*//') ; \
-	fslmaths "$@" -add $$(($$max1 + $$max2)) "$@" ; \
-	fslmaths "$@" -thr $$(($$max1 + $$max2 + 1)) "$@"
-
-%/atlas-cerebellum.nii.gz : %/feat.feat/reg/standard2example_func.mat %/feat.feat/example_func.nii.gz
-	@echo 'creating cerebellar parcellation $@'
-	@flirt -interp nearestneighbour \
-	      -in "$(CEREBELLUM_ATLAS)" \
-	      -ref "$(subst atlas-cerebellum,feat.feat/example_func,$@)" \
-	      -applyxfm \
-	      -init "$<" \
-	      -out "$@"
-#       shift values to avoid collision with other subatlases
-	@max=$$(fslstats "$(CORTICAL_ATLAS)" -R | cut -d ' ' -f 2 | sed -E 's/\..*//') ; \
-	fslmaths "$@" -add $$max "$@" ; \
-	fslmaths "$@" -thr $$(($$max + 1)) "$@"
-
-%/atlas-cort.nii.gz : %/feat.feat/reg/standard2example_func.mat %/feat.feat/example_func.nii.gz
-	@echo 'creating cortical parcellation $@'
-	@flirt -interp nearestneighbour \
-	      -in "$(CORTICAL_ATLAS)" \
-	      -ref "$(subst atlas-cort,feat.feat/example_func,$@)" \
-	      -applyxfm \
-	      -init "$<" \
-	      -out "$@"
-
 %/volbrain-mask.nii.gz : %/feat.feat/reg/highres2example_func.mat %/feat.feat/example_func.nii.gz
 	@echo 'creating brain mask $@'
 	@orig_mask_dir=$(subst volbrain-mask.nii.gz,,$(subst feat,volbrain,$@)) ; \
@@ -324,7 +196,7 @@ feat_masks : $(addsuffix /volbrain-mask.nii.gz, $(addprefix $(DATA_DIR)/feat/, $
 	      -init "$<" \
 	      -out "$@"
 
-# FIXME: feat.feat/ dirs are created as soon as feat starts. this confuses
+# TODO: feat.feat/ dirs are created as soon as feat starts. this confuses
 #        dependents, which actually need it to finish creating all files
 
 # %/reg/highres2example_func.mat : % ;
@@ -393,7 +265,7 @@ $(DATA_DIR)/volbrain/%/ :
 	@mkdir -p "$@"
 
 ################################################################################
-# convert DICOMs to Nifti and BIDS
+# convert DICOMs to Nifti
 ################################################################################
 
 .PHONY : nifti

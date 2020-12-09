@@ -113,8 +113,7 @@ plot_RSA_matrix(RSA_matrix(ds4.samples - np.mean(ds4.samples, axis = 0),
 
 # tune regularizing hyperparameter 'C'
 hyper = []
-# cees = [1, .1, .01, .001, .0001, -1]
-cees = [-1]
+cees = [1, .1, .01, .001, .0001, -1]
 for c in cees:
         oldmodel,oldvalidator = train(ANOVA_SELECTION, C = c)
         oldresults = oldvalidator(ds3)
