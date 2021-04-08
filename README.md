@@ -157,6 +157,11 @@ Needed libraries:
     make postpoststats
     ```
 
+## Citation
+
+Please cite this paper when using the software:
+<https://doi.org/10.1101/2021.04.04.438425>
+
 ## License
 
 GNU General Public License (GPL) version 3, or (at your option) any
